@@ -6,7 +6,7 @@ use std::{
 
 use eframe::{
 	CreationContext,
-	egui::{CollapsingHeader, Ui},
+	egui::{self, CollapsingHeader, Ui},
 };
 use egui_dock::TabViewer;
 
@@ -148,22 +148,33 @@ impl FileNode {
 				}
 			}
 			FileNode::File { .. } => {
-				let header = CollapsingHeader::new(name)
-					.open(if !has_been_opened { Some(false) } else { None })
-					.show(ui, |ui| {
-						ui.label("mraow");
-					});
-				if !has_been_opened {
-					if header.header_response.double_clicked() {
-						self.open();
+				ui.scope(|ui| {
+					ui.multiply_opacity(0.7);
+					let header = CollapsingHeader::new(name)
+						.icon(circle_icon)
+						.open(if !has_been_opened { Some(false) } else { None })
+						.show(ui, |ui| {
+							ui.label("mraow");
+						});
+					if !has_been_opened {
+						if header.header_response.double_clicked() {
+							self.open();
+						}
 					}
-				}
+				});
 			}
 			FileNode::Unknown { .. } => {
 				ui.label(name);
 			}
 		}
 	}
+}
+
+fn circle_icon(ui: &mut Ui, openness: f32, response: &egui::Response) {
+	let stroke = ui.style().interact(&response).fg_stroke;
+	let radius = egui::lerp(2.0..=3.0, openness);
+	ui.painter()
+		.circle_filled(response.rect.center(), radius, stroke.color);
 }
 
 pub struct State {}
