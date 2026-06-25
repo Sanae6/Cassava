@@ -1,5 +1,6 @@
-use std::{fs, path::PathBuf};
+use std::{fs, mem::MaybeUninit, path::PathBuf};
 
+use glam::{IVec3, UVec3, Vec2, Vec3};
 use snafu::prelude::*;
 
 #[derive(Snafu, Debug)]
@@ -197,57 +198,132 @@ impl<'a> BinaryReader<'a> {
 		&self.inner[start..end]
 	}
 
+	pub fn read_array<const N: usize, R>(
+		&mut self,
+		mut func: impl FnMut(&mut Self) -> Result<R, Error>,
+	) -> Result<[R; N], Error> {
+		let mut array = [const { MaybeUninit::uninit() }; N];
+
+		for el in &mut array {
+			*el = MaybeUninit::new(func(self)?);
+		}
+
+		// safety: this point can only be reached once every element in the array contains
+		// an initialized value.
+		Ok(unsafe { array.map(|el| el.assume_init()) })
+	}
+
+	pub fn read_boxed_array<R>(
+		&mut self,
+		count: usize,
+		mut func: impl FnMut(&mut Self) -> Result<R, Error>,
+	) -> Result<Box<[R]>, Error> {
+		let mut array = Box::new_uninit_slice(count);
+
+		for el in &mut array {
+			*el = MaybeUninit::new(func(self)?);
+		}
+
+		// safety: this point can only be reached once every element in the array contains
+		// an initialized value.
+		Ok(unsafe { array.assume_init() })
+	}
+
 	pub fn read_u8(&mut self) -> Result<u8, Error> {
 		let data = self.read_bytes(1)?;
 		Ok(data[0])
 	}
 
+	#[doc(alias = "read_s8")]
+	pub fn read_i8(&mut self) -> Result<i8, Error> {
+		Ok(self.read_u8()? as i8)
+	}
+
 	pub fn read_u16(&mut self) -> Result<u16, Error> {
 		let byte_order = self.byte_order;
-		let data = self.read_bytes(2)?;
+		let data = self.read_bytes(2)?.try_into().unwrap();
 		Ok(match byte_order {
-			ByteOrder::Big => (data[0] as u16) << 8 | (data[1] as u16),
-			ByteOrder::Little => (data[0] as u16) | (data[1] as u16) << 8,
+			ByteOrder::Big => u16::from_be_bytes(data),
+			ByteOrder::Little => u16::from_le_bytes(data),
 		})
+	}
+
+	#[doc(alias = "read_s16")]
+	pub fn read_i16(&mut self) -> Result<i16, Error> {
+		Ok(self.read_u16()? as i16)
 	}
 
 	pub fn read_u32(&mut self) -> Result<u32, Error> {
 		let byte_order = self.byte_order;
-		let data = self.read_bytes(4)?;
+		let data = self.read_bytes(4)?.try_into().unwrap();
 		Ok(match byte_order {
-			ByteOrder::Big => {
-				(data[0] as u32) << 24 | (data[1] as u32) << 16 | (data[2] as u32) << 8 | (data[3] as u32)
-			}
-			ByteOrder::Little => {
-				(data[0] as u32) | (data[1] as u32) << 8 | (data[2] as u32) << 16 | (data[3] as u32) << 24
-			}
+			ByteOrder::Big => u32::from_be_bytes(data),
+			ByteOrder::Little => u32::from_le_bytes(data),
 		})
+	}
+
+	#[doc(alias = "read_s32")]
+	pub fn read_i32(&mut self) -> Result<i32, Error> {
+		Ok(self.read_u32()? as i32)
 	}
 
 	pub fn read_u64(&mut self) -> Result<u64, Error> {
 		let byte_order = self.byte_order;
-		let data = self.read_bytes(8)?;
+		let data = self.read_bytes(8)?.try_into().unwrap();
 		Ok(match byte_order {
-			ByteOrder::Big => {
-				(data[0] as u64) << 56
-					| (data[1] as u64) << 48
-					| (data[2] as u64) << 40
-					| (data[3] as u64) << 32
-					| (data[4] as u64) << 24
-					| (data[5] as u64) << 16
-					| (data[6] as u64) << 8
-					| (data[7] as u64)
-			}
-			ByteOrder::Little => {
-				(data[0] as u64)
-					| (data[1] as u64) << 8
-					| (data[2] as u64) << 16
-					| (data[3] as u64) << 24
-					| (data[4] as u64) << 32
-					| (data[5] as u64) << 40
-					| (data[6] as u64) << 48
-					| (data[7] as u64) << 56
-			}
+			ByteOrder::Big => u64::from_be_bytes(data),
+			ByteOrder::Little => u64::from_le_bytes(data),
 		})
+	}
+
+	#[doc(alias = "read_s64")]
+	pub fn read_i64(&mut self) -> Result<i64, Error> {
+		Ok(self.read_u64()? as i64)
+	}
+
+	pub fn read_f32(&mut self) -> Result<f32, Error> {
+		let byte_order = self.byte_order;
+		let data = self.read_bytes(4)?.try_into().unwrap();
+		Ok(match byte_order {
+			ByteOrder::Big => f32::from_be_bytes(data),
+			ByteOrder::Little => f32::from_le_bytes(data),
+		})
+	}
+
+	pub fn read_f64(&mut self) -> Result<f64, Error> {
+		let byte_order = self.byte_order;
+		let data = self.read_bytes(4)?.try_into().unwrap();
+		Ok(match byte_order {
+			ByteOrder::Big => f64::from_be_bytes(data),
+			ByteOrder::Little => f64::from_le_bytes(data),
+		})
+	}
+
+	pub fn read_vec2(&mut self) -> Result<Vec2, Error> {
+		Ok(Vec2::new(self.read_f32()?, self.read_f32()?))
+	}
+
+	pub fn read_vec3(&mut self) -> Result<Vec3, Error> {
+		Ok(Vec3::new(
+			self.read_f32()?,
+			self.read_f32()?,
+			self.read_f32()?,
+		))
+	}
+
+	pub fn read_ivec3(&mut self) -> Result<IVec3, Error> {
+		Ok(IVec3::new(
+			self.read_i32()?,
+			self.read_i32()?,
+			self.read_i32()?,
+		))
+	}
+
+	pub fn read_uvec3(&mut self) -> Result<UVec3, Error> {
+		Ok(UVec3::new(
+			self.read_u32()?,
+			self.read_u32()?,
+			self.read_u32()?,
+		))
 	}
 }

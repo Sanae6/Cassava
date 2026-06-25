@@ -4,10 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bytemuck = "1.25.0"
 byteordered = "0.6.0"
+glam = { version = "0.33.0", features = ["bytemuck"] }
+gltf-json = "1.4.1"
 pathdiff = "0.2.3"
-snafu = "0.9.0"
+serde = { version = "1.0.228", features = ["derive"] }
+snafu = { version = "0.9.0", features = ["unstable-provider-api"] }
 
 [dev-dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
 eyre = "0.6.12"
+gltf = "1.4.1"
+gltf-json = "1.4.1"
+serde = "1.0.228"
