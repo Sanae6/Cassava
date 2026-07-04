@@ -42,7 +42,7 @@ fn main() -> Result<(), kcl::Error> {
 			traverse_model(&octree, 0);
 			for model in models {
 				println!("model");
-				model.
+				// model.
 				// for octree in model.octree {
 				// println!("  tree");
 				// traverse_prisms(&octree, 2);

@@ -178,12 +178,12 @@ impl KclMesh {
 
 		let bounds = !width_mask.as_ivec3() >> block_width_shift;
 		let node_count = (bounds.x + 1) * (bounds.y + 1) * (bounds.z + 1);
-		println!(
-			"node count {node_count} {} {} {}",
-			(bounds.x + 1),
-			(bounds.y + 1),
-			(bounds.z + 1)
-		);
+		// println!(
+		// 	"node count {node_count} {} {} {}",
+		// 	(bounds.x + 1),
+		// 	(bounds.y + 1),
+		// 	(bounds.z + 1)
+		// );
 		let octree = PrismOctree::start(reader, octree_offset, node_count as usize)?;
 
 		Ok(KclMesh {
@@ -200,6 +200,9 @@ impl KclMesh {
 			hitbox_radius_cap,
 		})
 	}
+
+	/*
+	implementation of https://old.tockdom.com/wiki/KCL_(File_Format)#Section_4_-_Spatial_Index
 
 	pub fn point_collision(&self, point: Vec3) -> Option<&KclPrism> {
 		let PrismOctree::Tree(block) = &self.octree else {
@@ -221,10 +224,9 @@ impl KclMesh {
 			let Some(block) = block.get(index as usize) else {
 				return None;
 			};
-
-			q
 		}
 	}
+	*/
 }
 
 pub struct Kcl {
