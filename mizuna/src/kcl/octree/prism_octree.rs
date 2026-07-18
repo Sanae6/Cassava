@@ -18,7 +18,7 @@ impl PrismOctree {
 	) -> Result<PrismOctree, OctreeError> {
 		reader.seek(offset as usize)?;
 		let branch_keys: Box<[u32]> =
-			reader.read_boxed_array(node_count, |reader| reader.read_u32())?;
+			reader.read_boxed_array(node_count, |reader, _| reader.read_u32())?;
 
 		let mut branches = Vec::with_capacity(branch_keys.len());
 		for key in branch_keys {
@@ -54,7 +54,7 @@ impl PrismOctree {
 			0b00 => {
 				let offset = offset + value as usize;
 				reader.seek(offset)?;
-				let branch_keys: [u32; 8] = reader.read_array(|reader| reader.read_u32())?;
+				let branch_keys: [u32; 8] = reader.read_array(|reader, _| reader.read_u32())?;
 				let mut branches = [const { None }; 8];
 				for i in 0..8 {
 					branches[i] = Some(Self::read(reader, offset, branch_keys[i])?);

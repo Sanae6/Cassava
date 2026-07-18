@@ -11,6 +11,8 @@ pub enum Error {
 	OutOfBoundsRead,
 	#[snafu(display("tried to seek past EOF"))]
 	OutOfBoundsSeek,
+	#[snafu(display("data must be utf-8 text"))]
+	InvalidUtf8,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -171,11 +173,26 @@ impl<'a> BinaryReader<'a> {
 		}
 	}
 
-	pub fn seek_rel(&mut self, offset: usize) -> Result<(), Error> {
-		self.seek(self.cursor + offset)
+	pub fn seek_rel(&mut self, offset: isize) -> Result<(), Error> {
+		self.seek(
+			self
+				.cursor
+				.checked_add_signed(offset)
+				.ok_or(Error::OutOfBoundsSeek)?,
+		)
 	}
 
-	pub fn read_bytes(&mut self, count: usize) -> Result<&[u8], Error> {
+	pub fn read_bytes<const N: usize>(&mut self) -> Result<[u8; N], Error> {
+		let start = self.cursor;
+		let end = start + N;
+		if end > self.inner.len() {
+			return Err(Error::OutOfBoundsRead);
+		}
+		self.cursor += N;
+		Ok(self.inner[start..end].try_into().unwrap())
+	}
+
+	pub fn read_slice(&mut self, count: usize) -> Result<&[u8], Error> {
 		let start = self.cursor;
 		let end = start + count;
 		if end > self.inner.len() {
@@ -198,14 +215,22 @@ impl<'a> BinaryReader<'a> {
 		&self.inner[start..end]
 	}
 
-	pub fn read_array<const N: usize, R>(
+	pub fn read_null_terminated_string(&mut self) -> Result<&str, Error> {
+		str::from_utf8(self.read_until(b'\0')).map_err(|_| Error::InvalidUtf8)
+	}
+
+	pub fn read_string(&mut self, count: usize) -> Result<&str, Error> {
+		str::from_utf8(self.read_slice(count)?).map_err(|_| Error::InvalidUtf8)
+	}
+
+	pub fn read_array<const N: usize, R, E>(
 		&mut self,
-		mut func: impl FnMut(&mut Self) -> Result<R, Error>,
-	) -> Result<[R; N], Error> {
+		mut func: impl FnMut(&mut Self, usize) -> Result<R, E>,
+	) -> Result<[R; N], E> {
 		let mut array = [const { MaybeUninit::uninit() }; N];
 
-		for el in &mut array {
-			*el = MaybeUninit::new(func(self)?);
+		for (index, el) in array.iter_mut().enumerate() {
+			*el = MaybeUninit::new(func(self, index)?);
 		}
 
 		// safety: this point can only be reached once every element in the array contains
@@ -213,15 +238,15 @@ impl<'a> BinaryReader<'a> {
 		Ok(unsafe { array.map(|el| el.assume_init()) })
 	}
 
-	pub fn read_boxed_array<R>(
+	pub fn read_boxed_array<R, E>(
 		&mut self,
 		count: usize,
-		mut func: impl FnMut(&mut Self) -> Result<R, Error>,
-	) -> Result<Box<[R]>, Error> {
+		mut func: impl FnMut(&mut Self, usize) -> Result<R, E>,
+	) -> Result<Box<[R]>, E> {
 		let mut array = Box::new_uninit_slice(count);
 
-		for el in &mut array {
-			*el = MaybeUninit::new(func(self)?);
+		for (index, el) in array.iter_mut().enumerate() {
+			*el = MaybeUninit::new(func(self, index)?);
 		}
 
 		// safety: this point can only be reached once every element in the array contains
@@ -229,8 +254,20 @@ impl<'a> BinaryReader<'a> {
 		Ok(unsafe { array.assume_init() })
 	}
 
+	pub fn scope<R, E: From<Error>>(
+		&mut self,
+		seek_to: usize,
+		func: impl FnOnce(&mut Self) -> Result<R, E>,
+	) -> Result<R, E> {
+		let current = self.position();
+		self.seek(seek_to)?;
+		let result = func(self);
+		self.seek(current)?;
+		result
+	}
+
 	pub fn read_u8(&mut self) -> Result<u8, Error> {
-		let data = self.read_bytes(1)?;
+		let data = self.read_slice(1)?;
 		Ok(data[0])
 	}
 
@@ -241,7 +278,7 @@ impl<'a> BinaryReader<'a> {
 
 	pub fn read_u16(&mut self) -> Result<u16, Error> {
 		let byte_order = self.byte_order;
-		let data = self.read_bytes(2)?.try_into().unwrap();
+		let data = self.read_slice(2)?.try_into().unwrap();
 		Ok(match byte_order {
 			ByteOrder::Big => u16::from_be_bytes(data),
 			ByteOrder::Little => u16::from_le_bytes(data),
@@ -255,7 +292,7 @@ impl<'a> BinaryReader<'a> {
 
 	pub fn read_u32(&mut self) -> Result<u32, Error> {
 		let byte_order = self.byte_order;
-		let data = self.read_bytes(4)?.try_into().unwrap();
+		let data = self.read_slice(4)?.try_into().unwrap();
 		Ok(match byte_order {
 			ByteOrder::Big => u32::from_be_bytes(data),
 			ByteOrder::Little => u32::from_le_bytes(data),
@@ -269,7 +306,7 @@ impl<'a> BinaryReader<'a> {
 
 	pub fn read_u64(&mut self) -> Result<u64, Error> {
 		let byte_order = self.byte_order;
-		let data = self.read_bytes(8)?.try_into().unwrap();
+		let data = self.read_slice(8)?.try_into().unwrap();
 		Ok(match byte_order {
 			ByteOrder::Big => u64::from_be_bytes(data),
 			ByteOrder::Little => u64::from_le_bytes(data),
@@ -283,7 +320,7 @@ impl<'a> BinaryReader<'a> {
 
 	pub fn read_f32(&mut self) -> Result<f32, Error> {
 		let byte_order = self.byte_order;
-		let data = self.read_bytes(4)?.try_into().unwrap();
+		let data = self.read_slice(4)?.try_into().unwrap();
 		Ok(match byte_order {
 			ByteOrder::Big => f32::from_be_bytes(data),
 			ByteOrder::Little => f32::from_le_bytes(data),
@@ -292,7 +329,7 @@ impl<'a> BinaryReader<'a> {
 
 	pub fn read_f64(&mut self) -> Result<f64, Error> {
 		let byte_order = self.byte_order;
-		let data = self.read_bytes(4)?.try_into().unwrap();
+		let data = self.read_slice(4)?.try_into().unwrap();
 		Ok(match byte_order {
 			ByteOrder::Big => f64::from_be_bytes(data),
 			ByteOrder::Little => f64::from_le_bytes(data),

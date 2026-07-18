@@ -1,0 +1,112 @@
+pub mod res_dict;
+pub mod user_data;
+
+use std::{collections::HashMap, str::Utf8Error};
+
+use snafu::{OptionExt, ResultExt, Snafu};
+
+use crate::{nw::res_dict::read_dict, util::{self, BinaryReader}};
+
+#[derive(Snafu, Debug)]
+pub enum FileHeaderError {
+	#[snafu(transparent)]
+	Io {
+		source: std::io::Error,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(transparent)]
+	ReadError {
+		source: crate::util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(display("incorrect file magic"))]
+	IncorrectFileMagic,
+	#[snafu(display("unexpected byte order"))]
+	InvalidByteOrder,
+	#[snafu(display("unsupported address size: {address_size}"))]
+	UnsupportedAddressSize { address_size: u16 },
+	#[snafu(display("arithmetic overflow"))]
+	ArithmeticOverflow,
+}
+
+pub struct BinaryFileInfo {
+	micro_version: u8,
+	minor_version: u8,
+	major_version: u16,
+	packed_alignment: u8,
+	file_name: String,
+}
+
+pub struct BinaryFileHeader {
+	magic: [u8; 8],
+	first_block_offset: u16,
+	relocation_table_offset: u32,
+	file_size: u32,
+}
+
+pub fn read_binary_file_header(
+	reader: &mut BinaryReader,
+	expected_magic: Option<[u8; 8]>,
+) -> Result<(BinaryFileInfo, BinaryFileHeader), FileHeaderError> {
+	let start = reader.position();
+	reader.seek_rel(12)?;
+	match reader.read_bytes::<2>()? {
+		[0xfe, 0xff] => reader.set_byte_order(util::ByteOrder::Big),
+		[0xff, 0xfe] => reader.set_byte_order(util::ByteOrder::Little),
+		_ => return Err(FileHeaderError::InvalidByteOrder),
+	}
+
+	reader.seek_rel(-14).unwrap();
+	let magic = reader.read_bytes::<8>()?;
+	if let Some(expected_magic) = expected_magic
+		&& expected_magic != magic
+	{
+		return Err(FileHeaderError::IncorrectFileMagic);
+	}
+
+	println!("{}", str::from_utf8(&magic).unwrap());
+	let (micro_version, minor_version, major_version) =
+		(reader.read_u8()?, reader.read_u8()?, reader.read_u16()?);
+	println!("{major_version} {minor_version} {micro_version}");
+	reader.seek_rel(2)?;
+	let packed_alignment = reader.read_u8()?;
+	let address_size = reader.read_u8()?;
+	println!("{packed_alignment} {address_size}");
+	snafu::ensure!(
+		address_size == 64,
+		UnsupportedAddressSizeSnafu { address_size }
+	);
+	let file_name_offset = reader.read_u32()?;
+	reader.seek_rel(2)?;
+	let (first_block_offset, relocation_table_offset, file_size) =
+		(reader.read_u16()?, reader.read_u32()?, reader.read_u32()?);
+	let end = reader.position();
+	println!(
+		"{} {} {}",
+		first_block_offset, relocation_table_offset, file_size
+	);
+	reader.seek(
+		start
+			.checked_add(file_name_offset as _)
+			.context(ArithmeticOverflowSnafu)?,
+	)?;
+	let file_name = reader.read_null_terminated_string()?.to_owned();
+	reader.seek(end)?;
+	println!("file name: {file_name}");
+
+	Ok((
+		BinaryFileInfo {
+			micro_version,
+			minor_version,
+			major_version,
+			packed_alignment,
+			file_name,
+		},
+		BinaryFileHeader {
+			magic,
+			first_block_offset,
+			relocation_table_offset,
+			file_size,
+		},
+	))
+}

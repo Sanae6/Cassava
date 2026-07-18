@@ -264,7 +264,7 @@ impl Kcl {
 		dbg!(model_count);
 		let mut models = Vec::with_capacity(model_count);
 		reader.seek(model_array_offset)?;
-		let offsets = reader.read_boxed_array(model_count, |reader| reader.read_u32())?;
+		let offsets = reader.read_boxed_array(model_count, |reader, _| reader.read_u32())?;
 		for (i, offset) in offsets.into_iter().enumerate() {
 			reader.seek(offset as _)?;
 			let model = KclMesh::read(&mut reader).map_err(|error| Error::Model {

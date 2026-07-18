@@ -8,13 +8,18 @@ bytemuck = "1.25.0"
 byteordered = "0.6.0"
 glam = { version = "0.33.0", features = ["bytemuck"] }
 gltf-json = "1.4.1"
+num-derive = "0.4.2"
+num-traits = "0.2.19"
 pathdiff = "0.2.3"
 serde = { version = "1.0.228", features = ["derive"] }
 snafu = { version = "0.9.0", features = ["unstable-provider-api"] }
+tegra_swizzle = "0.4.0"
 
 [dev-dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
+ddsfile = "0.6.0"
 eyre = "0.6.12"
 gltf = "1.4.1"
 gltf-json = "1.4.1"
+image = { version = "0.25.10", features = ["png"] }
 serde = "1.0.228"

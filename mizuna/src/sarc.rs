@@ -58,7 +58,7 @@ impl Reader {
 	pub fn new(input: Vec<u8>) -> Result<Self, Error> {
 		let mut reader = BinaryReader::new(&input, ByteOrder::Little);
 
-		let signature = reader.read_bytes(4)?;
+		let signature = reader.read_slice(4)?;
 		if signature != b"SARC" {
 			return Err(Error::InvalidSignature { expected: "SARC" });
 		}
@@ -102,7 +102,7 @@ impl Reader {
 
 		// SFAT - File Allocation Table
 
-		let signature = reader.read_bytes(4)?;
+		let signature = reader.read_slice(4)?;
 		if signature != b"SFAT" {
 			return Err(Error::InvalidSignature { expected: "SFAT" });
 		}
@@ -124,7 +124,7 @@ impl Reader {
 		// SFNT - File Name Table
 
 		reader.seek(sfat_offset + 0x10 * file_count)?;
-		let signature = reader.read_bytes(4)?;
+		let signature = reader.read_slice(4)?;
 		if signature != b"SFNT" {
 			return Err(Error::InvalidSignature { expected: "SFNT" });
 		}

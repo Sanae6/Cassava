@@ -9,7 +9,7 @@ pub enum ModelOctree {
 impl ModelOctree {
 	pub(in crate::kcl) fn start(reader: &mut BinaryReader, offset: usize) -> Result<ModelOctree, Error> {
 		reader.seek(offset as usize)?;
-		let branch_keys: [u32; 8] = reader.read_array(|reader| reader.read_u32())?;
+		let branch_keys: [u32; 8] = reader.read_array(|reader, _| reader.read_u32())?;
 		let mut branches = [const { None }; 8];
 		for (i, key) in branch_keys.into_iter().enumerate() {
 			branches[i] = Some(Self::read(reader, offset, key)?);
@@ -32,7 +32,7 @@ impl ModelOctree {
 			0b00 => {
 				let offset = offset + value as usize * size_of::<u32>();
 				reader.seek(offset)?;
-				let branch_keys: [u32; 8] = reader.read_array(|reader| reader.read_u32())?;
+				let branch_keys: [u32; 8] = reader.read_array(|reader, _| reader.read_u32())?;
 				let mut branches = [const { None }; 8];
 				for i in 0..8 {
 					branches[i] = Some(Self::read(reader, offset, branch_keys[i])?);
