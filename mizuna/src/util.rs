@@ -1,6 +1,7 @@
 use std::{fs, mem::MaybeUninit, path::PathBuf};
 
 use glam::{IVec3, UVec3, Vec2, Vec3};
+use num_traits::PrimInt;
 use snafu::prelude::*;
 
 #[derive(Snafu, Debug)]
@@ -42,6 +43,10 @@ impl BinaryWriter {
 
 	pub fn take_inner(self) -> Vec<u8> {
 		self.inner
+	}
+
+	pub fn byte_order(&self) -> ByteOrder {
+		self.byte_order
 	}
 
 	pub fn save_to_file(&self, path: &PathBuf) -> Result<(), std::io::Error> {
@@ -133,6 +138,20 @@ impl BinaryWriter {
 		});
 	}
 
+	pub fn write_f32(&mut self, data: f32) {
+		self.write_bytes(&match self.byte_order {
+			ByteOrder::Big => data.to_be_bytes(),
+			ByteOrder::Little => data.to_le_bytes(),
+		});
+	}
+
+	pub fn write_f64(&mut self, data: f64) {
+		self.write_bytes(&match self.byte_order {
+			ByteOrder::Big => data.to_be_bytes(),
+			ByteOrder::Little => data.to_le_bytes(),
+		});
+	}
+
 	pub fn write_string(&mut self, data: &str, has_null_term: bool) {
 		self.write_bytes(&data.bytes().collect::<Vec<u8>>());
 		if has_null_term {
@@ -160,6 +179,10 @@ impl<'a> BinaryReader<'a> {
 		self.byte_order = byte_order;
 	}
 
+	pub fn byte_order(&self) -> ByteOrder {
+		self.byte_order
+	}
+
 	pub fn position(&self) -> usize {
 		self.cursor
 	}
@@ -180,6 +203,10 @@ impl<'a> BinaryReader<'a> {
 				.checked_add_signed(offset)
 				.ok_or(Error::OutOfBoundsSeek)?,
 		)
+	}
+
+	pub fn align_up(&mut self, alignment: usize) -> Result<(), Error> {
+		self.seek(align_up(self.position(), alignment))
 	}
 
 	pub fn read_bytes<const N: usize>(&mut self) -> Result<[u8; N], Error> {
@@ -363,4 +390,17 @@ impl<'a> BinaryReader<'a> {
 			self.read_u32()?,
 		))
 	}
+}
+
+pub fn align_up<T: PrimInt>(value: T, alignment: T) -> T {
+	(value + alignment - T::one()) & !(alignment - T::one())
+}
+
+pub fn try_align_up<T: PrimInt>(value: T, alignment: T) -> Option<T> {
+	Some(
+		value
+			.checked_add(&alignment)
+			.and_then(|value| value.checked_sub(&T::one()))?
+			& !alignment.checked_sub(&T::one())?,
+	)
 }

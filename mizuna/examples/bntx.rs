@@ -6,7 +6,6 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use ddsfile::{Dds, DxgiFormat, NewDxgiParams};
-use image::codecs::dds::DdsDecoder;
 use mizuna::{
 	bntx::{self, ChannelFormat, TextureArchive, TypeFormat},
 	util::{BinaryReader, ByteOrder},
@@ -26,8 +25,7 @@ enum Commands {
 
 #[snafu::report]
 fn main() -> Result<(), bntx::Error> {
-	let args = Args::parse();
-	match args.command {
+	let args = Args::parse(); match args.command {
 		Commands::Dump { in_path } => {
 			let file = fs::read(in_path).unwrap();
 			let texture_archive =
@@ -70,7 +68,6 @@ fn main() -> Result<(), bntx::Error> {
 					println!("skipping {format:?}");
 				}
 			}
-			// let texture = texture_archive.textures;
 		}
 	}
 	Ok(())
