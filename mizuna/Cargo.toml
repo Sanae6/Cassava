@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bitfield-struct = "0.13.0"
 bytemuck = "1.25.0"
 byteordered = "0.6.0"
 glam = { version = "0.33.0", features = ["bytemuck"] }

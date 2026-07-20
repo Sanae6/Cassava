@@ -8,7 +8,7 @@ use std::{
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use ordered_float::OrderedFloat;
-use snafu::{OptionExt, ResultExt, Snafu, ensure};
+use snafu::{OptionExt, Snafu, ensure};
 
 use crate::util::{self, BinaryReader, BinaryWriter, ByteOrder, align_up, try_align_up};
 
@@ -386,8 +386,7 @@ impl Byml {
 		writer.write_u32(*container_offsets.get(&root_node).unwrap() as u32);
 
 		let mut write_sorted_string_table = |offset: usize, strings: &[Rc<str>]| {
-      writer.seek(offset);
-      let start = writer.position();
+			writer.seek(offset);
 			writer.write_u8(DataType::StringTable as u8);
 			write_u24(&mut writer, strings.len() as u32);
 			let strings_start = 4 + strings.len() * 4 + 4;
@@ -402,8 +401,7 @@ impl Byml {
 				writer.write_u8(0);
 			}
 
-      writer.align_up(4).unwrap();
-      let diff = writer.position() - start;
+			writer.align_up(4).unwrap();
 		};
 
 		write_sorted_string_table(hash_table_offset as _, &hash_keys);

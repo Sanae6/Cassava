@@ -344,7 +344,7 @@ fn calc_hash(string: &[u8], hash_multiplier: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-	use std::fs::{self, DirEntry};
+	use std::fs;
 
 	use crate::yaz0;
 
