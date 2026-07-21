@@ -1,6 +1,6 @@
 use bytemuck::{Zeroable, cast};
 
-use crate::texture::bcn::{colour_table_8_snorm, colour_table_8_unorm};
+use crate::texture::bcn::{channel_table_8_snorm, channel_table_8_unorm};
 
 #[derive(bytemuck::Pod, Clone, Copy, Zeroable)]
 #[repr(C)]
@@ -19,8 +19,8 @@ pub fn decode_unorm(input: &[[u8; 16]], output: &mut [[u8; 2]], width: usize, he
 	for by in 0..block_height {
 		for bx in 0..block_width {
 			let texel: BlockUnorm = cast(input[block_width * by + bx]);
-			let red_colours = colour_table_8_unorm(texel.red_0, texel.red_1);
-			let green_colours = colour_table_8_unorm(texel.green_0, texel.green_1);
+			let red_colours = channel_table_8_unorm(texel.red_0, texel.red_1);
+			let green_colours = channel_table_8_unorm(texel.green_0, texel.green_1);
 			let red_indices =
 				std::array::from_fn(|byte| texel.red_indices.get(byte).cloned().unwrap_or(0));
 			let green_indices =
@@ -60,8 +60,8 @@ pub fn decode_snorm(input: &[[u8; 16]], output: &mut [[i8; 2]], width: usize, he
 	for by in 0..block_height {
 		for bx in 0..block_width {
 			let texel: BlockSnorm = cast(input[block_width * by + bx]);
-			let red_colours = colour_table_8_snorm(texel.red_0, texel.red_1);
-			let green_colours = colour_table_8_snorm(texel.green_0, texel.green_1);
+			let red_colours = channel_table_8_snorm(texel.red_0, texel.red_1);
+			let green_colours = channel_table_8_snorm(texel.green_0, texel.green_1);
 			let red_indices =
 				std::array::from_fn(|byte| texel.red_indices.get(byte).cloned().unwrap_or(0));
 			let green_indices =

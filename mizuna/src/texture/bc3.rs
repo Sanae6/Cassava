@@ -1,6 +1,6 @@
 use bytemuck::Zeroable;
 
-use crate::texture::bcn::{bc3_colour_table_4, colour_table_8_unorm};
+use crate::texture::bcn::{bc3_colour_table_4, channel_table_8_unorm};
 
 #[derive(bytemuck::Pod, Clone, Copy, Zeroable)]
 #[repr(C)]
@@ -19,7 +19,7 @@ pub fn decode_rgb(input: &[[u8; 16]], output: &mut [[u8; 4]], width: usize, heig
 	for by in 0..block_height {
 		for bx in 0..block_width {
 			let texel: Block = bytemuck::cast(input[block_width * by + bx]);
-			let alpha = colour_table_8_unorm(texel.alpha_0, texel.alpha_1);
+			let alpha = channel_table_8_unorm(texel.alpha_0, texel.alpha_1);
 			let alpha_indices =
 				std::array::from_fn(|byte| texel.alpha_indices.get(byte).cloned().unwrap_or(0));
 			let mut alpha_indices = u64::from_le_bytes(alpha_indices);

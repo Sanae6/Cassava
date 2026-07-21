@@ -18,11 +18,6 @@ use crate::{
 #[derive(Snafu, Debug)]
 pub enum Error {
 	#[snafu(transparent)]
-	Io {
-		source: std::io::Error,
-		backtrace: snafu::Backtrace,
-	},
-	#[snafu(transparent)]
 	ReadError {
 		source: crate::util::Error,
 		backtrace: snafu::Backtrace,

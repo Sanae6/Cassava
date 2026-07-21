@@ -1,7 +1,7 @@
 use bitfield_struct::bitfield;
 use bytemuck::Zeroable;
 
-pub fn colour_table_8_unorm(c_0: u8, c_1: u8) -> [u8; 8] {
+pub fn channel_table_8_unorm(c_0: u8, c_1: u8) -> [u8; 8] {
 	let (c_0, c_1) = (c_0 as u16, c_1 as u16);
 	if c_0 > c_1 {
 		let c_2 = (6 * c_0 + 1 * c_1) / 7;
@@ -22,7 +22,7 @@ pub fn colour_table_8_unorm(c_0: u8, c_1: u8) -> [u8; 8] {
 	}
 }
 
-pub fn colour_table_8_snorm(c_0: i8, c_1: i8) -> [i8; 8] {
+pub fn channel_table_8_snorm(c_0: i8, c_1: i8) -> [i8; 8] {
 	let (c_0, c_1) = (c_0 as i16, c_1 as i16);
 	if c_0 > c_1 {
 		let c_2 = (6 * c_0 + 1 * c_1) / 7;
