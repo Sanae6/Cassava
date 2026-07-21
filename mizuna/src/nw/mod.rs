@@ -24,12 +24,13 @@ pub enum FileHeaderError {
 	IncorrectFileMagic,
 	#[snafu(display("unexpected byte order"))]
 	InvalidByteOrder,
-	#[snafu(display("unsupported address size: {address_size}"))]
-	UnsupportedAddressSize { address_size: u16 },
+	// #[snafu(display("unsupported address size: {address_size}"))]
+	// UnsupportedAddressSize { address_size: u16 },
 	#[snafu(display("arithmetic overflow"))]
 	ArithmeticOverflow,
 }
 
+#[derive(Debug)]
 pub struct BinaryFileInfo {
 	pub micro_version: u8,
 	pub minor_version: u8,
@@ -66,35 +67,26 @@ pub fn read_binary_file_header(
 		return Err(FileHeaderError::IncorrectFileMagic);
 	}
 
-	println!("{}", str::from_utf8(&magic).unwrap());
 	let (micro_version, minor_version, major_version) =
 		(reader.read_u8()?, reader.read_u8()?, reader.read_u16()?);
-	println!("{major_version} {minor_version} {micro_version}");
 	reader.seek_rel(2)?;
 	let packed_alignment = reader.read_u8()?;
-	let address_size = reader.read_u8()?;
-	println!("{packed_alignment} {address_size}");
-	snafu::ensure!(
-		address_size == 64,
-		UnsupportedAddressSizeSnafu { address_size }
-	);
+	println!("{:02X}", reader.position());
+	let _address_size = reader.read_u8()?;
+	// snafu::ensure!(
+	// 	address_size == 64,
+	// 	UnsupportedAddressSizeSnafu { address_size }
+	// );
 	let file_name_offset = reader.read_u32()?;
 	reader.seek_rel(2)?;
 	let (first_block_offset, relocation_table_offset, file_size) =
 		(reader.read_u16()?, reader.read_u32()?, reader.read_u32()?);
-	let end = reader.position();
-	println!(
-		"{} {} {}",
-		first_block_offset, relocation_table_offset, file_size
-	);
-	reader.seek(
-		start
-			.checked_add(file_name_offset as _)
-			.context(ArithmeticOverflowSnafu)?,
-	)?;
-	let file_name = reader.read_null_terminated_string()?.to_owned();
-	reader.seek(end)?;
-	println!("file name: {file_name}");
+	let file_name_offset = start
+		.checked_add(file_name_offset as _)
+		.context(ArithmeticOverflowSnafu)?;
+	let file_name = reader.scope::<_, FileHeaderError>(file_name_offset, |reader| {
+		Ok(reader.read_null_terminated_string()?.to_owned())
+	})?;
 
 	Ok((
 		BinaryFileInfo {

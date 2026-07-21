@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use image::{GrayAlphaImage, GrayImage, Pixel};
+use image::GrayImage;
 use mizuna::texture::bc4;
 
 #[derive(Parser)]

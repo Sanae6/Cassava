@@ -229,6 +229,8 @@ pub struct TextureArchive {
 	pub textures: HashMap<String, TextureInfo>,
 }
 
+const DICT: [u8; 4] = *b"_DIC";
+
 impl TextureArchive {
 	pub fn read(reader: &mut BinaryReader) -> Result<TextureArchive, Error> {
 		let (file_info, _file_header) =
@@ -245,6 +247,7 @@ impl TextureArchive {
 		let texture_dictionary = reader.read_u64()? as usize;
 		let textures = read_dict::<TextureInfo, TextureError>(
 			reader,
+			DICT,
 			texture_array,
 			texture_dictionary,
 			|reader, texture_name| {
@@ -350,7 +353,7 @@ impl TextureArchive {
 				reader.seek_rel(24)?;
 				let gfx_user_data_dict = reader.read_u64()? as usize;
 
-				let user_data = read_gfx_user_data(reader, gfx_user_data_values, gfx_user_data_dict)?;
+				let user_data = read_gfx_user_data(reader, DICT, gfx_user_data_values, gfx_user_data_dict)?;
 
 				Ok(TextureInfo {
 					gfx: gfx_info,

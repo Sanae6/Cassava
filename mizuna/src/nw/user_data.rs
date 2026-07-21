@@ -26,6 +26,7 @@ pub enum UserData {
 
 pub fn read_gfx_user_data(
 	reader: &mut BinaryReader,
+	dict_magic: [u8; 4],
 	value_list: usize,
 	dictionary_list: usize,
 ) -> Result<HashMap<String, UserData>, res_dict::DictError<UserDataError>> {
@@ -33,5 +34,11 @@ pub fn read_gfx_user_data(
 		return Ok(HashMap::new());
 	}
 
-	read_dict(reader, value_list, dictionary_list, |_reader, _| todo!())
+	read_dict(
+		reader,
+		dict_magic,
+		value_list,
+		dictionary_list,
+		|_reader, _| todo!(),
+	)
 }

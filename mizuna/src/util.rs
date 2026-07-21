@@ -16,7 +16,7 @@ pub enum Error {
 	InvalidUtf8,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ByteOrder {
 	Big,
 	Little,

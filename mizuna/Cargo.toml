@@ -20,7 +20,6 @@ tegra_swizzle = "0.4.0"
 [dev-dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
 ddsfile = "0.6.0"
-eyre = "0.6.12"
 gltf = "1.4.1"
 gltf-json = "1.4.1"
 image = { version = "0.25.10", features = ["png"] }
