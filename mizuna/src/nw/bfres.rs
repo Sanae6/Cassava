@@ -41,6 +41,22 @@ pub enum ModelError {
 		backtrace: snafu::Backtrace,
 	},
 	IncorrectModelMagic,
+	#[snafu(transparent)]
+	VertexInfoError {
+		source: VertexInfoError,
+	},
+	#[snafu(transparent)]
+	ShapeError {
+		source: DictError<ShapeError>,
+	}
+}
+#[derive(Snafu, Debug)]
+pub enum VertexInfoError {
+	#[snafu(transparent)]
+	ReadError {
+		source: crate::util::Error,
+		backtrace: snafu::Backtrace,
+	},
 	IncorrectVertexMagic,
 	#[snafu(transparent)]
 	VertexAttribError {
@@ -55,7 +71,21 @@ pub enum VertexAttribError {
 		source: crate::util::Error,
 		backtrace: snafu::Backtrace,
 	},
-	InvalidFormat,
+	InvalidAttribFormat,
+}
+
+#[derive(Snafu, Debug)]
+pub enum ShapeError {
+	#[snafu(transparent)]
+	ReadError {
+		source: crate::util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	IncorrectShapeMagic,
+	#[snafu(transparent)]
+	VertexInfoError {
+		source: VertexInfoError,
+	},
 }
 
 #[derive(Debug)]
@@ -68,7 +98,7 @@ pub struct ModelArchive {
 #[derive(Debug)]
 pub struct Model {
 	pub skeleton: Skeleton,
-	pub vertex_info: Vertex,
+	pub vertex_info: VertexInfo,
 	pub shapes: Dict<Shape>,
 	pub materials: Dict<Material>,
 	pub user_data: Dict<UserData>,
@@ -78,7 +108,7 @@ pub struct Model {
 pub struct Skeleton;
 
 #[derive(Debug)]
-pub struct Vertex {
+pub struct VertexInfo {
 	pub attributes: Dict<VertexAttrib>,
 	pub buffers: Vec<VertexBuffer>,
 }
@@ -178,7 +208,9 @@ pub enum VertexAttribFormat {
 	Vec4F32 = 0x519,
 }
 #[derive(Debug)]
-pub struct Shape {}
+pub struct Shape {
+	vertex_info: VertexInfo,
+}
 #[derive(Debug)]
 pub struct Material {}
 
@@ -205,11 +237,15 @@ impl ModelArchive {
 			let _skeleton_offset = reader.read_u64()? as usize;
 			let vertex_info_offset = reader.read_u64()? as usize;
 			let vertex_info = reader.scope(vertex_info_offset, Self::read_vertex_info)?;
+		let (shape_array, shape_dictionary) = (reader.read_u64()? as _, reader.read_u64()? as _);
+		let shapes = read_dict(reader, shape_array, shape_dictionary, |reader, _| {
+Self::read_shape(reader)
+		})?;
 
 			Ok(Model {
 				skeleton: Skeleton,
 				vertex_info,
-				shapes: Dict::new(),
+				shapes,
 				materials: Dict::new(),
 				user_data: Dict::new(),
 			})
@@ -222,10 +258,10 @@ impl ModelArchive {
 		})
 	}
 
-	fn read_vertex_info(reader: &mut BinaryReader) -> Result<Vertex, ModelError> {
+	fn read_vertex_info(reader: &mut BinaryReader) -> Result<VertexInfo, VertexInfoError> {
 		let magic = reader.read_bytes::<4>()?;
 		let start = reader.position();
-		println!("{:04X} {}", start, String::from_utf8_lossy(&magic));
+		// println!("{:04X} {}", start, String::from_utf8_lossy(&magic));
 		ensure!(magic == *b"FVTX", IncorrectVertexMagicSnafu);
 		reader.seek_rel(12)?;
 
@@ -248,7 +284,7 @@ impl ModelArchive {
 				if reader.byte_order() == ByteOrder::Little {
 					format = format.swap_bytes();
 				}
-				let format = VertexAttribFormat::from_u16(format).context(InvalidFormatSnafu)?;
+				let format = VertexAttribFormat::from_u16(format).context(InvalidAttribFormatSnafu)?;
 				let buffer_offset = reader.read_u16()?;
 				let buffer_index = reader.read_u16()?;
 				reader.seek_rel(2)?;
@@ -261,7 +297,7 @@ impl ModelArchive {
 			},
 		)?;
 
-		println!("{:04X}", reader.position() - start);
+		// println!("{:04X}", reader.position() - start);
 		reader.seek_rel(0x18)?;
 		let buffer_sizes = reader.read_u64()? as usize;
 		let buffer_stride = reader.read_u64()? as usize;
@@ -274,14 +310,14 @@ impl ModelArchive {
 		let vertex_skin_count = reader.read_u32()?;
 		reader.seek_rel(2)?;
 
-		println!(
-			"{buffer_sizes:04X} {buffer_stride:04X} {buffer_offset:04X} {_vertex_attrib_count:X} {buffer_count:04X}"
-		);
+		// println!(
+		// 	"{buffer_sizes:04X} {buffer_stride:04X} {buffer_offset:04X} {_vertex_attrib_count:X} {buffer_count:04X}"
+		// );
 
 		let mut start_offset = 0;
 		let buffers = reader
-			.read_boxed_array::<_, ModelError>(buffer_count as _, |reader, index| {
-				let (size, access_flags) = reader.scope::<_, ModelError>(buffer_sizes, |reader| {
+			.read_boxed_array::<_, VertexInfoError>(buffer_count as _, |reader, index| {
+				let (size, access_flags) = reader.scope::<_, VertexInfoError>(buffer_sizes, |reader| {
 					reader.seek_rel(index as isize * 0x10)?;
 					Ok((reader.read_u32()?, reader.read_u32()?))
 				})?;
@@ -303,9 +339,30 @@ impl ModelArchive {
 			})?
 			.into_vec();
 
-		Ok(Vertex {
+		Ok(VertexInfo {
 			attributes: attributes,
 			buffers,
+		})
+	}
+
+	fn read_shape(reader: &mut BinaryReader) -> Result<Shape, ShapeError> {
+		let magic = reader.read_bytes::<4>()?;
+		let start = reader.position();
+		// println!("{:04X} {}", start, String::from_utf8_lossy(&magic));
+		ensure!(magic == *b"FSHP", IncorrectShapeMagicSnafu);
+		reader.seek_rel(12)?;
+		let name_offset = reader.read_u64()? as _;
+		let name = reader.scope(name_offset, |reader| {
+			let name_size = reader.read_u16()?;
+			reader.read_string(name_size as _).map(ToOwned::to_owned)
+		})?;
+
+		let vertex_info_offset = reader.read_u64()? as usize;
+		let vertex_info = reader.scope(vertex_info_offset, Self::read_vertex_info)?;
+		println!("{name}");
+
+		Ok(Shape {
+			vertex_info,
 		})
 	}
 }

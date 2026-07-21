@@ -71,7 +71,6 @@ pub fn read_binary_file_header(
 		(reader.read_u8()?, reader.read_u8()?, reader.read_u16()?);
 	reader.seek_rel(2)?;
 	let packed_alignment = reader.read_u8()?;
-	println!("{:02X}", reader.position());
 	let _address_size = reader.read_u8()?;
 	// snafu::ensure!(
 	// 	address_size == 64,
