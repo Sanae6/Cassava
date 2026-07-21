@@ -196,6 +196,7 @@ impl<'a> BinaryReader<'a> {
 		}
 	}
 
+	#[doc(alias = "skip")]
 	pub fn seek_rel(&mut self, offset: isize) -> Result<(), Error> {
 		self.seek(
 			self

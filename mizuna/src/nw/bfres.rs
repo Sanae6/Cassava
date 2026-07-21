@@ -1,12 +1,15 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
+use bitfield_struct::bitfield;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use crate::{
 	nw::{
-		BinaryFileInfo, FileHeaderError, read_binary_file_header,
+		BinaryFileInfo, FileHeaderError,
+		bntx::GpuAccessFlags,
+		read_binary_file_header,
 		res_dict::{Dict, DictError},
 		user_data::UserData,
 	},
@@ -48,7 +51,7 @@ pub enum ModelError {
 	#[snafu(transparent)]
 	ShapeError {
 		source: DictError<ShapeError>,
-	}
+	},
 }
 #[derive(Snafu, Debug)]
 pub enum VertexInfoError {
@@ -86,6 +89,8 @@ pub enum ShapeError {
 	VertexInfoError {
 		source: VertexInfoError,
 	},
+	InvalidPrimitiveTopology,
+	InvalidIndexFormat,
 }
 
 #[derive(Debug)]
@@ -209,8 +214,66 @@ pub enum VertexAttribFormat {
 }
 #[derive(Debug)]
 pub struct Shape {
-	vertex_info: VertexInfo,
+	pub vertex_info: VertexInfo,
+	pub meshes: Vec<Mesh>,
+	pub flags: ShapeFlags,
+	pub material_index: u16,
+	pub base_bone_index: u16,
+	// todo bounding box
+	// todo bounding sphere
 }
+#[bitfield(u32)]
+pub struct ShapeFlags {
+	has_vertex_buffer: bool,
+
+	/// The boundings in all submeshes are consistent.
+	/// (bfreslibrary comment, not sure what it means)
+	sub_mesh_boundary_consistent: bool,
+	#[bits(30)]
+	_reserved: u32,
+}
+#[derive(Debug)]
+pub struct Mesh {
+	/// divisions of the index buffer
+	pub sub_meshes: Vec<Range<u32>>,
+	pub index_buffer: IndexBuffer,
+	pub primitive_topology: PrimitiveTopology,
+	pub index_format: IndexFormat,
+	pub base_vertex: u32,
+}
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrimitiveTopology {
+	Points = 0x00,
+	Lines = 0x01,
+	LineStrip = 0x02,
+	Triangles = 0x03,
+	TriangleStrip = 0x04,
+	LinesAdjacency = 0x05,
+	LineStripAdjacency = 0x06,
+	TrianglesAdjacency = 0x07,
+	TriangleStripAdjacency = 0x08,
+	Patches = 0x09,
+}
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexFormat {
+	U8 = 0,
+	U16 = 1,
+	U32 = 2,
+}
+pub struct IndexBuffer {
+	data: Vec<u8>,
+	access_flags: GpuAccessFlags,
+}
+
+impl std::fmt::Debug for IndexBuffer {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("IndexBuffer")
+			.field("len(data)", &self.data.len())
+			.field("access_flags", &self.access_flags)
+			.finish()
+	}
+}
+
 #[derive(Debug)]
 pub struct Material {}
 
@@ -237,10 +300,10 @@ impl ModelArchive {
 			let _skeleton_offset = reader.read_u64()? as usize;
 			let vertex_info_offset = reader.read_u64()? as usize;
 			let vertex_info = reader.scope(vertex_info_offset, Self::read_vertex_info)?;
-		let (shape_array, shape_dictionary) = (reader.read_u64()? as _, reader.read_u64()? as _);
-		let shapes = read_dict(reader, shape_array, shape_dictionary, |reader, _| {
-Self::read_shape(reader)
-		})?;
+			let (shape_array, shape_dictionary) = (reader.read_u64()? as _, reader.read_u64()? as _);
+			let shapes = read_dict(reader, shape_array, shape_dictionary, |reader, _| {
+				Self::read_shape(reader)
+			})?;
 
 			Ok(Model {
 				skeleton: Skeleton,
@@ -260,13 +323,10 @@ Self::read_shape(reader)
 
 	fn read_vertex_info(reader: &mut BinaryReader) -> Result<VertexInfo, VertexInfoError> {
 		let magic = reader.read_bytes::<4>()?;
-		let start = reader.position();
-		// println!("{:04X} {}", start, String::from_utf8_lossy(&magic));
 		ensure!(magic == *b"FVTX", IncorrectVertexMagicSnafu);
 		reader.seek_rel(12)?;
 
 		let (attrib_array, attrib_dictionary) = (reader.read_u64()? as _, reader.read_u64()? as _);
-		// println!("{attrib_array:X} {attrib_dictionary:X}");
 
 		let attributes = read_dict::<_, VertexAttribError>(
 			reader,
@@ -297,22 +357,17 @@ Self::read_shape(reader)
 			},
 		)?;
 
-		// println!("{:04X}", reader.position() - start);
 		reader.seek_rel(0x18)?;
 		let buffer_sizes = reader.read_u64()? as usize;
 		let buffer_stride = reader.read_u64()? as usize;
 		reader.seek_rel(8)?;
-		let buffer_offset = reader.read_u32()?;
+		let _buffer_offset = reader.read_u32()?;
 		let _vertex_attrib_count = reader.read_u8()?;
 		let buffer_count = reader.read_u8()?;
 		reader.seek_rel(2)?;
-		let vertex_count = reader.read_u32()?;
-		let vertex_skin_count = reader.read_u32()?;
+		let _vertex_count = reader.read_u32()?;
+		let _vertex_skin_count = reader.read_u32()?;
 		reader.seek_rel(2)?;
-
-		// println!(
-		// 	"{buffer_sizes:04X} {buffer_stride:04X} {buffer_offset:04X} {_vertex_attrib_count:X} {buffer_count:04X}"
-		// );
 
 		let mut start_offset = 0;
 		let buffers = reader
@@ -347,7 +402,7 @@ Self::read_shape(reader)
 
 	fn read_shape(reader: &mut BinaryReader) -> Result<Shape, ShapeError> {
 		let magic = reader.read_bytes::<4>()?;
-		let start = reader.position();
+		// let start = reader.position();
 		// println!("{:04X} {}", start, String::from_utf8_lossy(&magic));
 		ensure!(magic == *b"FSHP", IncorrectShapeMagicSnafu);
 		reader.seek_rel(12)?;
@@ -359,10 +414,84 @@ Self::read_shape(reader)
 
 		let vertex_info_offset = reader.read_u64()? as usize;
 		let vertex_info = reader.scope(vertex_info_offset, Self::read_vertex_info)?;
+		let mesh_array_offset = reader.read_u64()? as usize;
+		let skinning_bone_array = reader.read_u64()? as usize;
+		let key_shape_array = reader.read_u64()? as usize;
+		let key_shape_dictionary = reader.read_u64()? as usize;
+		let bounding_box_array = reader.read_u64()? as usize;
+		let bounding_sphere_array = reader.read_u64()? as usize;
+		let _user_data_array = reader.read_u64()? as usize;
+		let flags = ShapeFlags::from_bits(reader.read_u32()?);
+		let _ = reader.read_u16()?;
+		let material_index = reader.read_u16()?;
+		let base_bone_index = reader.read_u16()?;
+		let vertex_index = reader.read_u16()?;
+		let skin_bone_index_count = reader.read_u16()?;
+		let vertex_skin_weight_count = reader.read_u8()?;
+		let mesh_count = reader.read_u8()?;
+		let key_shape_count = reader.read_u8()?;
+		let target_attribute_count = reader.read_u8()?;
+		reader.seek_rel(2)?;
+		println!("{mesh_array_offset:X} {mesh_count:X}");
+		let meshes = reader.scope(mesh_array_offset, |reader| {
+			reader
+				.read_boxed_array(mesh_count as usize, |reader, _| Self::read_mesh(reader))
+				.map(<[_]>::into_vec)
+		})?;
+		// let meshes = vec![];
+
 		println!("{name}");
 
 		Ok(Shape {
 			vertex_info,
+			meshes,
+			flags,
+			material_index,
+			base_bone_index,
+		})
+	}
+
+	fn read_mesh(reader: &mut BinaryReader) -> Result<Mesh, ShapeError> {
+		let sub_mesh_offset = reader.read_u64()? as usize;
+		reader.seek_rel(16)?;
+		let index_buffer_info_offset = reader.read_u64()? as usize;
+		let index_buffer_offset = reader.read_u32()? as usize;
+		let primitive_topology =
+			PrimitiveTopology::from_u32(reader.read_u32()?).context(InvalidPrimitiveTopologySnafu)?;
+		let index_format =
+			IndexFormat::from_u32(reader.read_u32()?).context(InvalidIndexFormatSnafu)?;
+		let _index_count = reader.read_u32()?;
+		let base_vertex = reader.read_u32()?;
+		let sub_mesh_count = reader.read_u16()? as usize;
+		reader.seek_rel(2)?;
+		let index_buffer = reader.scope(
+			index_buffer_info_offset,
+			|reader| -> Result<_, ShapeError> {
+				let size = reader.read_u32()?;
+				let access_flags = GpuAccessFlags::from_bits(reader.read_u32()?);
+
+				let data = reader.scope(index_buffer_offset, |reader| {
+					reader.read_slice(size as _).map(Vec::from)
+				})?;
+				Ok(IndexBuffer { data, access_flags })
+			},
+		)?;
+		let sub_meshes = reader.scope(sub_mesh_offset, |reader| {
+			reader
+				.read_boxed_array(sub_mesh_count, |reader, _| -> Result<_, ShapeError> {
+					let offset = reader.read_u32()?;
+					let size = reader.read_u32()?;
+					Ok(offset..offset + size)
+				})
+				.map(<[_]>::into_vec)
+		})?;
+
+		Ok(Mesh {
+			sub_meshes,
+			index_buffer,
+			primitive_topology,
+			index_format,
+			base_vertex,
 		})
 	}
 }

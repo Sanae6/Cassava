@@ -1,5 +1,6 @@
 use std::{collections::HashMap, num::NonZeroU32};
 
+use bitfield_struct::bitfield;
 use glam::UVec3;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
@@ -176,19 +177,32 @@ pub enum TileMode {
 	Linear,
 }
 
-#[derive(FromPrimitive, ToPrimitive, Clone, Copy, Debug)]
-#[repr(u32)]
-pub enum GpuAccessFlags {
-	VertexBuffer = 1 << 2,
-	IndexBuffer = 1 << 3,
-	UniformBuffer = 1 << 4,
-	Texture = 1 << 5,
-	StorageBuffer = 1 << 6,
-	RenderTargetColor = 1 << 7,
-	RenderTargetDepth = 1 << 8,
-	IndirectDraw = 1 << 9,
-	DisplayTexture = 1 << 10,
-	Counter = 1 << 11,
+#[bitfield(u32)]
+pub struct GpuAccessFlags {
+	#[bits(2)]
+	_reserved: u8,
+	pub is_vertex_buffer: bool,
+	pub index_buffer: bool,
+	pub uniform_buffer: bool,
+	pub texture: bool,
+	pub storage_buffer: bool,
+	pub render_target_colour: bool,
+	pub render_target_depth: bool,
+	pub indirect_draw: bool,
+	pub display_texture: bool,
+	pub counter: bool,
+	#[bits(20)]
+	_reserved: u32,
+	// VertexBuffer = 1 << 2,
+	// IndexBuffer = 1 << 3,
+	// UniformBuffer = 1 << 4,
+	// Texture = 1 << 5,
+	// StorageBuffer = 1 << 6,
+	// RenderTargetColor = 1 << 7,
+	// RenderTargetDepth = 1 << 8,
+	// IndirectDraw = 1 << 9,
+	// DisplayTexture = 1 << 10,
+	// Counter = 1 << 11,
 }
 
 #[derive(Clone, Debug)]
@@ -272,8 +286,7 @@ impl TextureArchive {
 					TypeFormat::from_u32(image_format & 0xFF).context(InvalidTypeFormatSnafu)?,
 				);
 				println!("image format: {image_format:?}");
-				let gpu_access_flags =
-					GpuAccessFlags::from_u32(reader.read_u32()?).context(InvalidStorageDimensionSnafu)?;
+				let gpu_access_flags = GpuAccessFlags::from_bits(reader.read_u32()?);
 				let (width, height, depth) = (reader.read_u32()?, reader.read_u32()?, reader.read_u32()?);
 				let array_layers = reader.read_u32()?;
 				let packaged_texture_layout = reader.read_u32()?;
