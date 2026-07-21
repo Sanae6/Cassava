@@ -8,7 +8,7 @@ use tegra_swizzle::{SwizzleError, surface::BlockDim};
 
 use crate::{
 	nw::{
-		self, BinaryFileInfo, read_binary_file_header,
+		BinaryFileInfo, FileHeaderError, read_binary_file_header,
 		res_dict::{DictError, read_dict},
 		user_data::{UserData, UserDataError, read_gfx_user_data},
 	},
@@ -24,7 +24,7 @@ pub enum Error {
 	},
 	#[snafu(display("failed to read file header"))]
 	FileHeaderError {
-		source: nw::FileHeaderError,
+		source: FileHeaderError,
 	},
 	UnsupportedVersion,
 	#[snafu(display("expected magic to be 'BNTX\0\0\0\0'"))]
@@ -325,7 +325,8 @@ impl TextureArchive {
 				let mip_offsets = reader
 					.read_boxed_array(mip_levels as usize * array_layers as usize, |reader, _| {
 						reader.read_u64().map(|value| value as usize)
-					})?.into();
+					})?
+					.into();
 				// let mipmaps = reader.scope::<_, TextureError>(mipmaps, |reader| {
 				// 	let (mip_levels, array_layers) = (mip_levels as usize, array_layers as usize);
 

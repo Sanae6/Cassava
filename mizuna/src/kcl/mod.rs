@@ -253,7 +253,7 @@ impl Kcl {
 		let model_array_offset = reader.read_u32()? as usize;
 		let model_count = reader.read_u32()? as usize;
 		let (bounds_min, bounds_max) = (reader.read_vec3()?, reader.read_vec3()?);
-		let shift = reader.read_uvec3()?;
+		let _shift = reader.read_uvec3()?;
 		let _prism_count = reader.read_i32()?;
 
 		let _model_array_end = model_array_offset

@@ -1,5 +1,3 @@
-use glam::{U16Vec3, Vec3};
-
 use crate::{
 	kcl::{OctreeError, octree::KEY_MASK},
 	util::BinaryReader,

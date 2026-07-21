@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use snafu::{ResultExt, Snafu};
+use snafu::Snafu;
 
 use crate::util::{self, BinaryReader};
 

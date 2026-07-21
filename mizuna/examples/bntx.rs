@@ -1,14 +1,9 @@
-use std::{
-	fs::{self, File},
-	io::Cursor,
-	path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
 use clap::{Parser, Subcommand};
-use ddsfile::{Dds, DxgiFormat, NewDxgiParams};
-use image::{Pixel, RgbImage, Rgba, RgbaImage};
+use image::{RgbImage, RgbaImage};
 use mizuna::{
-	bntx::{self, ChannelFormat, TextureArchive, TypeFormat},
+	nw::bntx::{self, ChannelFormat, TextureArchive, TypeFormat},
 	texture::{bc1, bc3, bc4, bc5},
 	util::{BinaryReader, ByteOrder},
 };
@@ -41,7 +36,7 @@ fn main() -> Result<(), bntx::Error> {
 					"{:?} {:?} {} {}",
 					name, texture.gfx.image_format, texture.gfx.width, texture.gfx.height
 				);
-				let dims = texture.dimensions();
+				// let dims = texture.dimensions();
 				// let (ChannelFormat::BC3 | ChannelFormat::BC1) = texture.gfx.image_format.0 else{
 				match texture.gfx.image_format {
 					(ChannelFormat::BC4, TypeFormat::Unorm) => {

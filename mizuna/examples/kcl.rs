@@ -1,7 +1,7 @@
-use std::{collections::BTreeMap, fs, io::Cursor, path::PathBuf, process::exit};
+use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use clap::{Parser, Subcommand};
-use gltf::{Semantic, accessor::DataType, mesh::Mode};
+use gltf::{Semantic, mesh::Mode};
 use gltf_json::{
 	Accessor, Index, Mesh, Node, Scene,
 	accessor::{ComponentType, GenericComponentType, Type},
@@ -10,7 +10,6 @@ use gltf_json::{
 	validation::Checked,
 };
 use mizuna::kcl::{self, Kcl, ModelOctree, PrismOctree};
-use snafu::ErrorCompat;
 
 #[derive(Parser)]
 #[command(about)]

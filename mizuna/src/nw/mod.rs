@@ -1,11 +1,12 @@
+pub mod bffnt;
+pub mod bfres;
+pub mod bntx;
 pub mod res_dict;
 pub mod user_data;
 
-use std::{collections::HashMap, str::Utf8Error};
+use snafu::{OptionExt, Snafu};
 
-use snafu::{OptionExt, ResultExt, Snafu};
-
-use crate::{nw::res_dict::read_dict, util::{self, BinaryReader}};
+use crate::util::{self, BinaryReader};
 
 #[derive(Snafu, Debug)]
 pub enum FileHeaderError {
@@ -30,13 +31,14 @@ pub enum FileHeaderError {
 }
 
 pub struct BinaryFileInfo {
-	micro_version: u8,
-	minor_version: u8,
-	major_version: u16,
-	packed_alignment: u8,
-	file_name: String,
+	pub micro_version: u8,
+	pub minor_version: u8,
+	pub major_version: u16,
+	pub packed_alignment: u8,
+	pub file_name: String,
 }
 
+#[allow(unused)]
 pub struct BinaryFileHeader {
 	magic: [u8; 8],
 	first_block_offset: u16,
