@@ -238,6 +238,7 @@ pub struct TextureInfo {
 	pub user_data: HashMap<String, UserData>,
 }
 
+#[derive(Debug)]
 pub struct TextureArchive {
 	pub file_info: BinaryFileInfo,
 	pub textures: HashMap<String, TextureInfo>,
