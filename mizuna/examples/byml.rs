@@ -26,6 +26,7 @@ fn main() -> Result<(), byaml::Error> {
 		Commands::Dump { in_path } => {
 			let file = fs::read(in_path).unwrap();
 			let byml = Byml::read(&mut BinaryReader::new(&file, ByteOrder::Little))?;
+			println!("filetype byml");
 			println!("version {}", byml.version);
 			println!(
 				"endian {}",

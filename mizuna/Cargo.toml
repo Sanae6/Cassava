@@ -24,3 +24,4 @@ gltf = "1.4.1"
 gltf-json = "1.4.1"
 image = { version = "0.25.10", features = ["png"] }
 serde = "1.0.228"
+serde_json = "1.0.151"

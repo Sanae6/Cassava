@@ -344,25 +344,6 @@ impl TextureArchive {
 						reader.read_u64().map(|value| value as usize)
 					})?
 					.into();
-				// let mipmaps = reader.scope::<_, TextureError>(mipmaps, |reader| {
-				// 	let (mip_levels, array_layers) = (mip_levels as usize, array_layers as usize);
-
-				// 	reader
-				// 		.read_boxed_array(array_layers, |reader, _| {
-				// 			let mut array_offset = 0;
-				// 			reader
-				// 				.read_boxed_array(mip_levels, |reader, mip_level| {
-				// 					let offset = array_offset + mip_offsets[mip_level];
-				// 					let size =
-				// 						(mip_offsets[0] + total_texture_size - mip_offsets[mip_level]) / array_layers;
-				// 					reader.seek(offset)?;
-				// 					Ok(reader.read_slice(size).map(Vec::from)?)
-				// 				})
-				// 				.map(Vec::from)
-				// 				.inspect(|mips| array_offset += mips[0].len())
-				// 		})
-				// 		.map(Vec::from)
-				// })?;
 				let gfx_user_data_values = reader.read_u64()? as usize;
 				reader.seek_rel(24)?;
 				let gfx_user_data_dict = reader.read_u64()? as usize;

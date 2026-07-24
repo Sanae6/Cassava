@@ -34,6 +34,9 @@ pub enum Error {
 	ModelError {
 		source: DictError<ModelError>,
 	},
+	EmbeddedFileError {
+		source: DictError<util::Error>,
+	},
 }
 
 #[derive(Snafu, Debug)]
@@ -44,6 +47,8 @@ pub enum ModelError {
 		backtrace: snafu::Backtrace,
 	},
 	IncorrectModelMagic,
+	#[snafu(context(suffix(ModelSnafu)))]
+	MismatchedName,
 	#[snafu(transparent)]
 	VertexInfoError {
 		source: VertexInfoError,
@@ -65,6 +70,7 @@ pub enum VertexInfoError {
 	VertexAttribError {
 		source: DictError<VertexAttribError>,
 	},
+	VertexBufferOutsideOfMemoryPool,
 }
 
 #[derive(Snafu, Debug)]
@@ -75,6 +81,8 @@ pub enum VertexAttribError {
 		backtrace: snafu::Backtrace,
 	},
 	InvalidAttribFormat,
+	#[snafu(context(suffix(AttribSnafu)))]
+	MismatchedName,
 }
 
 #[derive(Snafu, Debug)]
@@ -91,13 +99,47 @@ pub enum ShapeError {
 	},
 	InvalidPrimitiveTopology,
 	InvalidIndexFormat,
+	IndexBufferOutsideOfMemoryPool,
+	#[snafu(context(suffix(ShapeSnafu)))]
+	MismatchedName,
 }
 
-#[derive(Debug)]
+#[derive(Snafu, Debug)]
+pub enum MaterialError {
+	#[snafu(transparent)]
+	ReadError {
+		source: crate::util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	IncorrectMaterialMagic,
+	#[snafu(context(suffix(MaterialSnafu)))]
+	MismatchedName,
+}
+
 pub struct ModelArchive {
 	pub file_info: BinaryFileInfo,
 	pub file_name: String,
 	pub models: Dict<Model>,
+	pub materials: Dict<Material>,
+	pub embedded_files: Dict<Vec<u8>>,
+}
+
+impl std::fmt::Debug for ModelArchive {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ModelArchive")
+			.field("file_info", &self.file_info)
+			.field("file_name", &self.file_name)
+			.field("models", &self.models)
+			.field(
+				"embedded_files",
+				&self
+					.embedded_files
+					.iter()
+					.map(|key| (key.0, key.1.len()))
+					.collect::<HashMap<_, _>>(),
+			)
+			.finish()
+	}
 }
 
 #[derive(Debug)]
@@ -116,6 +158,7 @@ pub struct Skeleton;
 pub struct VertexInfo {
 	pub attributes: Dict<VertexAttrib>,
 	pub buffers: Vec<VertexBuffer>,
+	pub vertex_count: u32,
 }
 
 pub struct VertexBuffer {
@@ -212,6 +255,132 @@ pub enum VertexAttribFormat {
 	Vec4I32 = 0x419,
 	Vec4F32 = 0x519,
 }
+
+impl VertexAttribFormat {
+	pub fn element_size(&self) -> usize {
+		match self {
+			VertexAttribFormat::Unorm8
+			| VertexAttribFormat::U8
+			| VertexAttribFormat::Snorm8
+			| VertexAttribFormat::I8
+			| VertexAttribFormat::U8F
+			| VertexAttribFormat::I8F => 1,
+			VertexAttribFormat::Vec2Unorm4
+			| VertexAttribFormat::Unorm16
+			| VertexAttribFormat::U16
+			| VertexAttribFormat::Snorm16
+			| VertexAttribFormat::I16
+			| VertexAttribFormat::F16
+			| VertexAttribFormat::U16F
+			| VertexAttribFormat::I16F
+			| VertexAttribFormat::Vec2Unorm8
+			| VertexAttribFormat::Vec2U8
+			| VertexAttribFormat::Vec2Snorm8
+			| VertexAttribFormat::Vec2I8
+			| VertexAttribFormat::Vec2U8F
+			| VertexAttribFormat::Vec2I8F => 2,
+			VertexAttribFormat::Vec2Unorm16
+			| VertexAttribFormat::Vec2Snorm16
+			| VertexAttribFormat::Vec2U16
+			| VertexAttribFormat::Vec2I16
+			| VertexAttribFormat::Vec2F16
+			| VertexAttribFormat::Vec2U16F
+			| VertexAttribFormat::Vec2I16F
+			| VertexAttribFormat::Vec3F10F11F11
+			| VertexAttribFormat::Vec4Unorm8
+			| VertexAttribFormat::Vec4Snorm8
+			| VertexAttribFormat::Vec4U8
+			| VertexAttribFormat::Vec4I8
+			| VertexAttribFormat::Vec4U8F
+			| VertexAttribFormat::Vec4I8F
+			| VertexAttribFormat::Vec4Unorm10_2
+			| VertexAttribFormat::Vec4U10_2
+			| VertexAttribFormat::Vec4Snorm10x3Unorm2
+			| VertexAttribFormat::Vec4I10_2 => 4,
+			VertexAttribFormat::Vec4Unorm16
+			| VertexAttribFormat::Vec4Snorm16
+			| VertexAttribFormat::Vec4U16
+			| VertexAttribFormat::Vec4I16
+			| VertexAttribFormat::Vec4F16
+			| VertexAttribFormat::Vec4U32F
+			| VertexAttribFormat::Vec4S32F => 8,
+			VertexAttribFormat::U32 => 4,
+			VertexAttribFormat::I32 => 4,
+			VertexAttribFormat::F32 => 4,
+			VertexAttribFormat::Vec2U32 => 8,
+			VertexAttribFormat::Vec2I32 => 8,
+			VertexAttribFormat::Vec2F32 => 8,
+			VertexAttribFormat::Vec3U32 => 12,
+			VertexAttribFormat::Vec3I32 => 12,
+			VertexAttribFormat::Vec3F32 => 12,
+			VertexAttribFormat::Vec4U32 => 16,
+			VertexAttribFormat::Vec4I32 => 16,
+			VertexAttribFormat::Vec4F32 => 16,
+		}
+	}
+	pub fn component_size(&self) -> usize {
+		match self {
+			VertexAttribFormat::Unorm8
+			| VertexAttribFormat::U8
+			| VertexAttribFormat::Snorm8
+			| VertexAttribFormat::I8
+			| VertexAttribFormat::U8F
+			| VertexAttribFormat::I8F
+			| VertexAttribFormat::Unorm16
+			| VertexAttribFormat::U16
+			| VertexAttribFormat::Snorm16
+			| VertexAttribFormat::I16
+			| VertexAttribFormat::F16
+			| VertexAttribFormat::U16F
+			| VertexAttribFormat::I16F
+			| VertexAttribFormat::U32
+			| VertexAttribFormat::I32
+			| VertexAttribFormat::F32 => 1,
+			VertexAttribFormat::Vec2Unorm4
+			| VertexAttribFormat::Vec2Unorm8
+			| VertexAttribFormat::Vec2U8
+			| VertexAttribFormat::Vec2Snorm8
+			| VertexAttribFormat::Vec2I8
+			| VertexAttribFormat::Vec2U8F
+			| VertexAttribFormat::Vec2I8F
+			| VertexAttribFormat::Vec2Unorm16
+			| VertexAttribFormat::Vec2Snorm16
+			| VertexAttribFormat::Vec2U16
+			| VertexAttribFormat::Vec2I16
+			| VertexAttribFormat::Vec2F16
+			| VertexAttribFormat::Vec2U16F
+			| VertexAttribFormat::Vec2I16F
+			| VertexAttribFormat::Vec2U32
+			| VertexAttribFormat::Vec2I32
+			| VertexAttribFormat::Vec2F32 => 2,
+			VertexAttribFormat::Vec3U32
+			| VertexAttribFormat::Vec3I32
+			| VertexAttribFormat::Vec3F32
+			| VertexAttribFormat::Vec3F10F11F11 => 3,
+			VertexAttribFormat::Vec4Unorm8
+			| VertexAttribFormat::Vec4Snorm8
+			| VertexAttribFormat::Vec4U8
+			| VertexAttribFormat::Vec4I8
+			| VertexAttribFormat::Vec4U8F
+			| VertexAttribFormat::Vec4I8F
+			| VertexAttribFormat::Vec4Unorm10_2
+			| VertexAttribFormat::Vec4U10_2
+			| VertexAttribFormat::Vec4Snorm10x3Unorm2
+			| VertexAttribFormat::Vec4I10_2
+			| VertexAttribFormat::Vec4Unorm16
+			| VertexAttribFormat::Vec4Snorm16
+			| VertexAttribFormat::Vec4U16
+			| VertexAttribFormat::Vec4I16
+			| VertexAttribFormat::Vec4F16
+			| VertexAttribFormat::Vec4U32F
+			| VertexAttribFormat::Vec4S32F
+			| VertexAttribFormat::Vec4U32
+			| VertexAttribFormat::Vec4I32
+			| VertexAttribFormat::Vec4F32 => 4,
+		}
+	}
+}
+
 #[derive(Debug)]
 pub struct Shape {
 	pub vertex_info: VertexInfo,
@@ -238,7 +407,6 @@ pub struct Mesh {
 	pub sub_meshes: Vec<Range<u32>>,
 	pub index_buffer: IndexBuffer,
 	pub primitive_topology: PrimitiveTopology,
-	pub index_format: IndexFormat,
 	pub base_vertex: u32,
 }
 #[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,10 +429,21 @@ pub enum IndexFormat {
 	U32 = 2,
 }
 pub struct IndexBuffer {
-	data: Vec<u8>,
-	access_flags: GpuAccessFlags,
+	pub data: Vec<u8>,
+	pub access_flags: GpuAccessFlags,
+	pub format: IndexFormat,
 }
 
+impl IndexBuffer {
+	pub fn element_count(&self) -> usize {
+		// self.data.len()
+		match self.format {
+			IndexFormat::U8 => self.data.len() / size_of::<u8>(),
+			IndexFormat::U16 => self.data.len() / size_of::<u16>(),
+			IndexFormat::U32 => self.data.len() / size_of::<u32>(),
+		}
+	}
+}
 impl std::fmt::Debug for IndexBuffer {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("IndexBuffer")
@@ -287,41 +466,103 @@ impl ModelArchive {
 			let name_size = reader.read_u16()?;
 			Ok(reader.read_string(name_size as _)?.to_owned())
 		})?;
-		let (model_array, model_dictionary) = (reader.read_u64()? as _, reader.read_u64()? as _);
-		let models = read_dict::<_, ModelError>(reader, model_array, model_dictionary, |reader, _| {
-			ensure!(
-				reader.read_bytes::<4>()? == *b"FMDL",
-				IncorrectModelMagicSnafu
-			);
+		let (model_array, model_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		// reader.seek_rel(32)?;
+		let (skel_anim_array, skel_anim_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let (material_anim_array, material_anim_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let (bone_vis_anim_array, bone_vis_anim_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let (shape_anim_array, shape_anim_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let (scene_anim_array, scene_anim_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		reader.seek_rel(8)?;
+		let memory_pool_offset = reader.read_u64()? as usize;
+		let (embedded_file_array, embedded_file_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let memory_pool = reader.scope(memory_pool_offset, |reader| -> Result<_, Error> {
+			let _a = reader.read_u32()?;
+			println!("{:X} {_a:X}", reader.position());
+			let memory_pool_size = reader.read_u32()?;
+			println!("{:X} {memory_pool_size:X}", reader.position());
+			let memory_pool_offset = reader.read_u64()?;
+			println!("{:X} {memory_pool_offset:X}", reader.position());
 
-			reader.seek_rel(12)?;
-			let _name_offset = reader.read_u64()?;
-			let _ = reader.read_u64()?;
-			let _skeleton_offset = reader.read_u64()? as usize;
-			let vertex_info_offset = reader.read_u64()? as usize;
-			let vertex_info = reader.scope(vertex_info_offset, Self::read_vertex_info)?;
-			let (shape_array, shape_dictionary) = (reader.read_u64()? as _, reader.read_u64()? as _);
-			let shapes = read_dict(reader, shape_array, shape_dictionary, |reader, _| {
-				Self::read_shape(reader)
+			println!("{memory_pool_offset:X} {memory_pool_size:X}");
+			let memory_pool = reader.scope(memory_pool_offset as usize, |reader| {
+				reader
+					.read_slice(memory_pool_size as usize)
+					.map(<[_]>::to_vec)
 			})?;
 
-			Ok(Model {
-				skeleton: Skeleton,
-				vertex_info,
-				shapes,
-				materials: Dict::new(),
-				user_data: Dict::new(),
-			})
+			Ok(memory_pool)
 		})?;
+		let models = read_dict::<_, ModelError>(
+			reader,
+			model_array,
+			model_dictionary,
+			|reader, dict_name, _| {
+				ensure!(
+					reader.read_bytes::<4>()? == *b"FMDL",
+					IncorrectModelMagicSnafu
+				);
+
+				reader.seek_rel(12)?;
+				let name_offset = reader.read_u64()? as usize;
+				let name = reader.scope(name_offset, |reader| {
+					let name_size = reader.read_u16()?;
+					reader.read_string(name_size as _).map(ToOwned::to_owned)
+				})?;
+				ensure!(name == dict_name, MismatchedNameModelSnafu);
+				let _ = reader.read_u64()?;
+				let _skeleton_offset = reader.read_u64()? as usize;
+				let vertex_info_offset = reader.read_u64()? as usize;
+				let vertex_info = reader.scope(vertex_info_offset, |reader| {
+					Self::read_vertex_info(reader, &memory_pool)
+				})?;
+				let (shape_array, shape_dictionary) = (reader.read_u64()? as _, reader.read_u64()? as _);
+				let shapes = read_dict(reader, shape_array, shape_dictionary, |reader, name, _| {
+					Self::read_shape(reader, name, &memory_pool)
+				})?;
+
+				Ok(Model {
+					skeleton: Skeleton,
+					vertex_info,
+					shapes,
+					materials: Dict::new(),
+					user_data: Dict::new(),
+				})
+			},
+		)?;
+		let embedded_files = read_dict::<_, util::Error>(
+			reader,
+			embedded_file_array,
+			embedded_file_dictionary,
+			|reader, _, _| {
+				let offset = reader.read_u64()? as usize;
+				let size = reader.read_u64()? as usize;
+				reader.scope(offset, |reader| reader.read_slice(size).map(<[_]>::to_vec))
+			},
+		)
+		.context(EmbeddedFileSnafu)?;
+		let materials = Dict::new();
 
 		Ok(ModelArchive {
 			file_info,
 			file_name,
 			models,
+			embedded_files,
+			materials,
 		})
 	}
 
-	fn read_vertex_info(reader: &mut BinaryReader) -> Result<VertexInfo, VertexInfoError> {
+	fn read_vertex_info(
+		reader: &mut BinaryReader,
+		memory_pool: &[u8],
+	) -> Result<VertexInfo, VertexInfoError> {
 		let magic = reader.read_bytes::<4>()?;
 		ensure!(magic == *b"FVTX", IncorrectVertexMagicSnafu);
 		reader.seek_rel(12)?;
@@ -332,22 +573,22 @@ impl ModelArchive {
 			reader,
 			attrib_array,
 			attrib_dictionary,
-			|reader, dict_name| {
+			|reader, dict_name, _| {
 				let name_offset = reader.read_u64()? as _;
 
 				let name = reader.scope(name_offset, |reader| {
 					let name_size = reader.read_u16()?;
 					reader.read_string(name_size as _).map(ToOwned::to_owned)
 				})?;
-				assert!(name == dict_name);
+				ensure!(name == dict_name, MismatchedNameAttribSnafu);
 				let mut format = reader.read_u16()?;
 				if reader.byte_order() == ByteOrder::Little {
 					format = format.swap_bytes();
 				}
 				let format = VertexAttribFormat::from_u16(format).context(InvalidAttribFormatSnafu)?;
+				reader.seek_rel(2)?;
 				let buffer_offset = reader.read_u16()?;
 				let buffer_index = reader.read_u16()?;
-				reader.seek_rel(2)?;
 
 				Ok(VertexAttrib {
 					format,
@@ -361,15 +602,16 @@ impl ModelArchive {
 		let buffer_sizes = reader.read_u64()? as usize;
 		let buffer_stride = reader.read_u64()? as usize;
 		reader.seek_rel(8)?;
-		let _buffer_offset = reader.read_u32()?;
+		let mut buffer_offset = reader.read_u32()? as usize;
 		let _vertex_attrib_count = reader.read_u8()?;
 		let buffer_count = reader.read_u8()?;
 		reader.seek_rel(2)?;
-		let _vertex_count = reader.read_u32()?;
+		let vertex_count = reader.read_u32()?;
 		let _vertex_skin_count = reader.read_u32()?;
 		reader.seek_rel(2)?;
 
-		let mut start_offset = 0;
+		println!("actual vertex count: {vertex_count}");
+
 		let buffers = reader
 			.read_boxed_array::<_, VertexInfoError>(buffer_count as _, |reader, index| {
 				let (size, access_flags) = reader.scope::<_, VertexInfoError>(buffer_sizes, |reader| {
@@ -380,11 +622,14 @@ impl ModelArchive {
 					reader.seek_rel(index as isize * 0x10)?;
 					reader.read_u32()
 				})?;
-				let data = reader.scope(start_offset as _, |reader| {
-					reader.read_slice(size as usize).map(<[u8]>::to_vec)
-				})?;
 
-				start_offset += size;
+				let data = buffer_offset
+					.checked_add(size as usize)
+					.and_then(|end| memory_pool.get(buffer_offset..end))
+					.map(<[_]>::to_vec)
+					.ok_or(VertexInfoError::VertexBufferOutsideOfMemoryPool)?;
+
+				buffer_offset += size as usize;
 
 				Ok(VertexBuffer {
 					stride,
@@ -397,13 +642,16 @@ impl ModelArchive {
 		Ok(VertexInfo {
 			attributes: attributes,
 			buffers,
+			vertex_count,
 		})
 	}
 
-	fn read_shape(reader: &mut BinaryReader) -> Result<Shape, ShapeError> {
+	fn read_shape(
+		reader: &mut BinaryReader,
+		dict_name: &str,
+		memory_pool: &[u8],
+	) -> Result<Shape, ShapeError> {
 		let magic = reader.read_bytes::<4>()?;
-		// let start = reader.position();
-		// println!("{:04X} {}", start, String::from_utf8_lossy(&magic));
 		ensure!(magic == *b"FSHP", IncorrectShapeMagicSnafu);
 		reader.seek_rel(12)?;
 		let name_offset = reader.read_u64()? as _;
@@ -412,8 +660,12 @@ impl ModelArchive {
 			reader.read_string(name_size as _).map(ToOwned::to_owned)
 		})?;
 
+		ensure!(name == dict_name, MismatchedNameShapeSnafu);
+
 		let vertex_info_offset = reader.read_u64()? as usize;
-		let vertex_info = reader.scope(vertex_info_offset, Self::read_vertex_info)?;
+		let vertex_info = reader.scope(vertex_info_offset, |reader| {
+			Self::read_vertex_info(reader, memory_pool)
+		})?;
 		let mesh_array_offset = reader.read_u64()? as usize;
 		let skinning_bone_array = reader.read_u64()? as usize;
 		let key_shape_array = reader.read_u64()? as usize;
@@ -432,15 +684,14 @@ impl ModelArchive {
 		let key_shape_count = reader.read_u8()?;
 		let target_attribute_count = reader.read_u8()?;
 		reader.seek_rel(2)?;
-		println!("{mesh_array_offset:X} {mesh_count:X}");
 		let meshes = reader.scope(mesh_array_offset, |reader| {
 			reader
-				.read_boxed_array(mesh_count as usize, |reader, _| Self::read_mesh(reader))
+				.read_boxed_array(mesh_count as usize, |reader, _| {
+					Self::read_mesh(reader, memory_pool)
+				})
 				.map(<[_]>::into_vec)
 		})?;
 		// let meshes = vec![];
-
-		println!("{name}");
 
 		Ok(Shape {
 			vertex_info,
@@ -451,7 +702,7 @@ impl ModelArchive {
 		})
 	}
 
-	fn read_mesh(reader: &mut BinaryReader) -> Result<Mesh, ShapeError> {
+	fn read_mesh(reader: &mut BinaryReader, memory_pool: &[u8]) -> Result<Mesh, ShapeError> {
 		let sub_mesh_offset = reader.read_u64()? as usize;
 		reader.seek_rel(16)?;
 		let index_buffer_info_offset = reader.read_u64()? as usize;
@@ -467,13 +718,19 @@ impl ModelArchive {
 		let index_buffer = reader.scope(
 			index_buffer_info_offset,
 			|reader| -> Result<_, ShapeError> {
-				let size = reader.read_u32()?;
+				let size = reader.read_u32()? as usize;
 				let access_flags = GpuAccessFlags::from_bits(reader.read_u32()?);
 
-				let data = reader.scope(index_buffer_offset, |reader| {
-					reader.read_slice(size as _).map(Vec::from)
-				})?;
-				Ok(IndexBuffer { data, access_flags })
+				let data = index_buffer_offset
+					.checked_add(size)
+					.and_then(|end| memory_pool.get(index_buffer_offset..end))
+					.map(<[_]>::to_vec)
+					.ok_or(ShapeError::IndexBufferOutsideOfMemoryPool)?;
+				Ok(IndexBuffer {
+					data,
+					access_flags,
+					format: index_format,
+				})
 			},
 		)?;
 		let sub_meshes = reader.scope(sub_mesh_offset, |reader| {
@@ -490,9 +747,20 @@ impl ModelArchive {
 			sub_meshes,
 			index_buffer,
 			primitive_topology,
-			index_format,
 			base_vertex,
 		})
+	}
+
+	pub fn read_material(reader: &mut BinaryReader) -> Result<Material, MaterialError> {
+		let magic = reader.read_bytes::<4>()?;
+		ensure!(magic == *b"FMAT", IncorrectMaterialMagicSnafu);
+		reader.seek_rel(12)?;
+		let name_offset = reader.read_u64()? as _;
+		let name = reader.scope(name_offset, |reader| {
+			let name_size = reader.read_u16()?;
+			reader.read_string(name_size as _).map(ToOwned::to_owned)
+		})?;
+		Ok(Material {})
 	}
 }
 
@@ -500,7 +768,7 @@ pub fn read_dict<T, E: snafu::Error + From<util::Error>>(
 	reader: &mut BinaryReader,
 	value_list: usize,
 	dictionary_list: usize,
-	mut element_reader: impl FnMut(&mut BinaryReader, &str) -> Result<T, E>,
+	mut element_reader: impl FnMut(&mut BinaryReader, &str, usize) -> Result<T, E>,
 ) -> Result<Dict<T>, DictError<E>> {
 	reader.scope::<_, DictError<E>>(dictionary_list, |reader| {
 		reader.seek(dictionary_list)?;
@@ -528,7 +796,7 @@ pub fn read_dict<T, E: snafu::Error + From<util::Error>>(
 			})?;
 			let element = reader
 				.scope(data_offset, |reader| {
-					let element = element_reader(reader, &name);
+					let element = element_reader(reader, &name, i);
 					data_offset = reader.position();
 					element
 				})
