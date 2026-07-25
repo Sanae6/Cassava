@@ -1,7 +1,9 @@
+use bitfield_struct::bitfield;
 use bytemuck::cast_slice;
 use glam::{Vec3, Vec4};
 use gltf::Semantic;
 use gltf_json::{
+	Asset,
 	accessor::{self, ComponentType, Type},
 	buffer::Stride,
 	extras::Void,
@@ -12,7 +14,9 @@ use mizuna::{
 	nw::{
 		bfres::{self, ModelArchive, VertexAttribFormat},
 		bntx::{ChannelFormat, TextureArchive, TextureInfo, TypeFormat},
-	}, texture::{bc1, bc3, bc4, bc5}, util::{BinaryReader, ByteOrder}
+	},
+	texture::{bc1, bc3, bc4, bc5},
+	util::{BinaryReader, ByteOrder},
 };
 use serde_json::Number;
 use std::{
@@ -43,19 +47,29 @@ fn main() -> Result<(), bfres::Error> {
 			let file = fs::read(in_path).unwrap();
 			let model_archive = ModelArchive::read(&mut BinaryReader::new(&file, ByteOrder::Little))?;
 
-			let _ = fs::create_dir(&out_dir);
+			fs::create_dir_all(&out_dir).unwrap();
 
 			let textures = if let Some(texture) = model_archive.embedded_files.get("textures.bntx") {
 				fs::write(out_dir.join("textures.bntx"), texture).unwrap();
 
 				let texture =
 					TextureArchive::read(&mut BinaryReader::new(texture, ByteOrder::Little)).unwrap();
-				texture.textures.iter().map(|(name, texture)| (name.clone(), save_texture(&out_dir, name, texture))).collect::<HashMap<_, _>>()
+				texture
+					.textures
+					.iter()
+					.map(|(name, texture)| (name.clone(), save_texture(&out_dir, name, texture)))
+					.collect::<HashMap<_, _>>()
 			} else {
 				HashMap::new()
 			};
 
-			let mut root = gltf_json::Root::default();
+			let mut root = gltf_json::Root {
+				asset: Asset {
+					generator: Some("Cassava".to_string()),
+					..Default::default()
+				},
+				..Default::default()
+			};
 			let models = model_archive
 				.models
 				.iter()
@@ -161,13 +175,13 @@ fn main() -> Result<(), bfres::Error> {
 								.map(|(mesh_index, mesh)| {
 									let path = format!("{model_name}_{shape_name}_mesh_idx{mesh_index}");
 
-									let normals: &[u16] = cast_slice(&mesh.index_buffer.data);
-									println!(
-										"{} {} {}",
-										normals.iter().min().unwrap(),
-										normals.iter().max().unwrap(),
-										mesh.index_buffer.data.len(),
-									);
+									// let indices: &[u16] = cast_slice(&mesh.index_buffer.data);
+									// println!(
+									// 	"{} {} {}",
+									// 	indices.iter().min().unwrap(),
+									// 	indices.iter().max().unwrap(),
+									// 	mesh.index_buffer.data.len(),
+									// );
 									fs::write(out_dir.join("buffers").join(&path), &mesh.index_buffer.data).unwrap();
 									let buffer = root.push(gltf_json::Buffer {
 										byte_length: mesh.index_buffer.data.len().into(),
@@ -270,7 +284,7 @@ fn main() -> Result<(), bfres::Error> {
 				gltf_json::serialize::to_vec(&root).unwrap(),
 			)
 			.unwrap();
-			todo!("{model_archive:#?}")
+			println!("{model_archive:#?}");
 		}
 	}
 	Ok(())
@@ -298,23 +312,23 @@ fn read_vertices_for_gltf(
 			(out_vertices, false, 16, ComponentType::F32, Type::Vec4)
 		}
 		VertexAttribFormat::Vec4Snorm10x3Unorm2 => {
-			let vertices: &[u32] = cast_slice(vertices);
+			let vertices: &[[u8; 4]] = cast_slice(vertices);
 			let mut out_vertices = Vec::with_capacity(vertices.len());
 			out_vertices.extend(
 				vertices
 					.iter()
 					.cloned()
 					.map(|value| {
-						let bytes: [u8; 12] = bytemuck::cast(
-							Vec3::new(
-								(value & 0x3ff) as f32 / 511.0,
-								((value >> 10) & 0x3ff) as f32 / 511.0,
-								((value >> 20) & 0x3ff) as f32 / 511.0,
-								// (value >> 30) as f32,
-							)
-							.to_array()
-							.map(f32::to_le_bytes),
-						);
+						let value = i32::from_le_bytes(value);
+						let bytes: [u8; 12] = bytemuck::cast({
+							let vec = Vec3::new(
+								// sign extend each value
+								((value << 22) >> 22) as f32 / 511.0,
+								((value << 12) >> 22) as f32 / 511.0,
+								((value << 2) >> 22) as f32 / 511.0,
+							);
+							vec.normalize().to_array().map(f32::to_le_bytes)
+						});
 						bytes
 					})
 					.flatten(),
@@ -334,6 +348,7 @@ fn read_vertices_for_gltf(
 }
 
 fn save_texture(out_dir: &Path, name: &str, texture: &TextureInfo) -> PathBuf {
+	fs::create_dir_all(out_dir.join("textures")).unwrap();
 	println!(
 		"{:?} {:?} {} {}",
 		name, texture.gfx.image_format, texture.gfx.width, texture.gfx.height

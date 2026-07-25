@@ -20,7 +20,7 @@ use crate::{
 pub enum Error {
 	#[snafu(transparent)]
 	ReadError {
-		source: crate::util::Error,
+		source: util::Error,
 		backtrace: snafu::Backtrace,
 	},
 	#[snafu(display("failed to read file header"))]
@@ -43,7 +43,7 @@ pub enum Error {
 pub enum ModelError {
 	#[snafu(transparent)]
 	ReadError {
-		source: crate::util::Error,
+		source: util::Error,
 		backtrace: snafu::Backtrace,
 	},
 	IncorrectModelMagic,
@@ -57,12 +57,16 @@ pub enum ModelError {
 	ShapeError {
 		source: DictError<ShapeError>,
 	},
+	#[snafu(transparent)]
+	MaterialError {
+		source: MaterialError,
+	},
 }
 #[derive(Snafu, Debug)]
 pub enum VertexInfoError {
 	#[snafu(transparent)]
 	ReadError {
-		source: crate::util::Error,
+		source: util::Error,
 		backtrace: snafu::Backtrace,
 	},
 	IncorrectVertexMagic,
@@ -77,7 +81,7 @@ pub enum VertexInfoError {
 pub enum VertexAttribError {
 	#[snafu(transparent)]
 	ReadError {
-		source: crate::util::Error,
+		source: util::Error,
 		backtrace: snafu::Backtrace,
 	},
 	InvalidAttribFormat,
@@ -89,7 +93,7 @@ pub enum VertexAttribError {
 pub enum ShapeError {
 	#[snafu(transparent)]
 	ReadError {
-		source: crate::util::Error,
+		source: util::Error,
 		backtrace: snafu::Backtrace,
 	},
 	IncorrectShapeMagic,
@@ -102,25 +106,27 @@ pub enum ShapeError {
 	IndexBufferOutsideOfMemoryPool,
 	#[snafu(context(suffix(ShapeSnafu)))]
 	MismatchedName,
+	MaterialNotFound,
 }
 
 #[derive(Snafu, Debug)]
 pub enum MaterialError {
 	#[snafu(transparent)]
 	ReadError {
-		source: crate::util::Error,
+		source: util::Error,
 		backtrace: snafu::Backtrace,
 	},
 	IncorrectMaterialMagic,
-	#[snafu(context(suffix(MaterialSnafu)))]
-	MismatchedName,
+	#[snafu(display("{source}"))]
+	RenderInfoError {
+		source: util::Error,
+	},
 }
 
 pub struct ModelArchive {
 	pub file_info: BinaryFileInfo,
 	pub file_name: String,
 	pub models: Dict<Model>,
-	pub materials: Dict<Material>,
 	pub embedded_files: Dict<Vec<u8>>,
 }
 
@@ -145,7 +151,6 @@ impl std::fmt::Debug for ModelArchive {
 #[derive(Debug)]
 pub struct Model {
 	pub skeleton: Skeleton,
-	pub vertex_info: VertexInfo,
 	pub shapes: Dict<Shape>,
 	pub materials: Dict<Material>,
 	pub user_data: Dict<UserData>,
@@ -386,7 +391,7 @@ pub struct Shape {
 	pub vertex_info: VertexInfo,
 	pub meshes: Vec<Mesh>,
 	pub flags: ShapeFlags,
-	pub material_index: u16,
+	pub material: Material,
 	pub base_bone_index: u16,
 	// todo bounding box
 	// todo bounding sphere
@@ -453,8 +458,36 @@ impl std::fmt::Debug for IndexBuffer {
 	}
 }
 
-#[derive(Debug)]
-pub struct Material {}
+#[derive(Clone, Debug)]
+pub struct Material {
+	name: String,
+	render_info: Dict<RenderValue>,
+	shader_assign: (),
+	texture_names: Vec<String>,
+	samplers: Dict<Sampler>,
+	shader_params: Dict<ShaderParam>,
+}
+
+#[derive(Clone, Debug)]
+pub enum RenderValue {
+	I32(i32),
+	F32(f32),
+	String(String),
+}
+#[derive(Clone, Debug)]
+pub enum ShaderParam {
+	I32(i32),
+	F32(f32),
+	String(String),
+}
+
+#[derive(Clone, Debug)]
+pub struct Sampler {
+	wrap_mode: (TextureAddressMode, TextureAddressMode, TextureAddressMode),
+}
+
+#[derive(Clone, Debug)]
+enum TextureAddressMode {}
 
 impl ModelArchive {
 	pub fn read(reader: &mut BinaryReader) -> Result<ModelArchive, Error> {
@@ -483,6 +516,7 @@ impl ModelArchive {
 		let memory_pool_offset = reader.read_u64()? as usize;
 		let (embedded_file_array, embedded_file_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+
 		let memory_pool = reader.scope(memory_pool_offset, |reader| -> Result<_, Error> {
 			let _a = reader.read_u32()?;
 			println!("{:X} {_a:X}", reader.position());
@@ -504,38 +538,7 @@ impl ModelArchive {
 			reader,
 			model_array,
 			model_dictionary,
-			|reader, dict_name, _| {
-				ensure!(
-					reader.read_bytes::<4>()? == *b"FMDL",
-					IncorrectModelMagicSnafu
-				);
-
-				reader.seek_rel(12)?;
-				let name_offset = reader.read_u64()? as usize;
-				let name = reader.scope(name_offset, |reader| {
-					let name_size = reader.read_u16()?;
-					reader.read_string(name_size as _).map(ToOwned::to_owned)
-				})?;
-				ensure!(name == dict_name, MismatchedNameModelSnafu);
-				let _ = reader.read_u64()?;
-				let _skeleton_offset = reader.read_u64()? as usize;
-				let vertex_info_offset = reader.read_u64()? as usize;
-				let vertex_info = reader.scope(vertex_info_offset, |reader| {
-					Self::read_vertex_info(reader, &memory_pool)
-				})?;
-				let (shape_array, shape_dictionary) = (reader.read_u64()? as _, reader.read_u64()? as _);
-				let shapes = read_dict(reader, shape_array, shape_dictionary, |reader, name, _| {
-					Self::read_shape(reader, name, &memory_pool)
-				})?;
-
-				Ok(Model {
-					skeleton: Skeleton,
-					vertex_info,
-					shapes,
-					materials: Dict::new(),
-					user_data: Dict::new(),
-				})
-			},
+			|reader, dict_name, _| Self::read_model(reader, dict_name, &memory_pool),
 		)?;
 		let embedded_files = read_dict::<_, util::Error>(
 			reader,
@@ -548,14 +551,62 @@ impl ModelArchive {
 			},
 		)
 		.context(EmbeddedFileSnafu)?;
-		let materials = Dict::new();
 
 		Ok(ModelArchive {
 			file_info,
 			file_name,
 			models,
 			embedded_files,
-			materials,
+		})
+	}
+
+	fn read_model(
+		reader: &mut BinaryReader<'_>,
+		dict_name: &str,
+		memory_pool: &[u8],
+	) -> Result<Model, ModelError> {
+		ensure!(
+			reader.read_bytes::<4>()? == *b"FMDL",
+			IncorrectModelMagicSnafu
+		);
+
+		reader.seek_rel(12)?;
+		let name_offset = reader.read_u64()? as usize;
+		let name = reader.scope(name_offset, |reader| {
+			let name_size = reader.read_u16()?;
+			reader.read_string(name_size as _).map(ToOwned::to_owned)
+		})?;
+		ensure!(name == dict_name, MismatchedNameModelSnafu);
+		let _ = reader.read_u64()?;
+		let _skeleton_offset = reader.read_u64()? as usize;
+		let _vertex_info_offset = reader.read_u64()? as usize;
+		let (shape_array, shape_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let (material_array, _material_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		// unused
+		let (_user_data_array, _user_data_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let _user_ptr = reader.read_u64()?;
+		// unread because shapes point to the used vertex infos
+		let _vertex_info_count = reader.read_u16()?;
+		let _shape_count = reader.read_u16()?;
+		let material_count = reader.read_u16()? as usize;
+		let _user_data_count = reader.read_u16()?;
+		let _total_vertices = reader.read_u32()?;
+
+		let material_list = reader.scope(material_array, |reader| {
+			reader.read_boxed_array(material_count, |reader, _| Self::read_material(reader))
+		})?;
+		let shapes = read_dict(reader, shape_array, shape_dictionary, |reader, name, _| {
+			Self::read_shape(reader, name, memory_pool, &material_list)
+		})?;
+
+		Ok(Model {
+			skeleton: Skeleton,
+			shapes,
+			materials: Dict::new(),
+			user_data: Dict::new(),
 		})
 	}
 
@@ -650,6 +701,7 @@ impl ModelArchive {
 		reader: &mut BinaryReader,
 		dict_name: &str,
 		memory_pool: &[u8],
+		materials: &[Material],
 	) -> Result<Shape, ShapeError> {
 		let magic = reader.read_bytes::<4>()?;
 		ensure!(magic == *b"FSHP", IncorrectShapeMagicSnafu);
@@ -675,14 +727,18 @@ impl ModelArchive {
 		let _user_data_array = reader.read_u64()? as usize;
 		let flags = ShapeFlags::from_bits(reader.read_u32()?);
 		let _ = reader.read_u16()?;
-		let material_index = reader.read_u16()?;
+		let material_index = reader.read_u16()? as usize;
 		let base_bone_index = reader.read_u16()?;
-		let vertex_index = reader.read_u16()?;
-		let skin_bone_index_count = reader.read_u16()?;
-		let vertex_skin_weight_count = reader.read_u8()?;
-		let mesh_count = reader.read_u8()?;
-		let key_shape_count = reader.read_u8()?;
-		let target_attribute_count = reader.read_u8()?;
+		let vertex_index = reader.read_u16()? as usize;
+		let skin_bone_index_count = reader.read_u16()? as usize;
+		let vertex_skin_weight_count = reader.read_u8()? as usize;
+		let mesh_count = reader.read_u8()? as usize;
+		let key_shape_count = reader.read_u8()? as usize;
+		let target_attribute_count = reader.read_u8()? as usize;
+		let material = materials
+			.get(material_index)
+			.cloned()
+			.context(MaterialNotFoundSnafu)?;
 		reader.seek_rel(2)?;
 		let meshes = reader.scope(mesh_array_offset, |reader| {
 			reader
@@ -697,7 +753,7 @@ impl ModelArchive {
 			vertex_info,
 			meshes,
 			flags,
-			material_index,
+			material,
 			base_bone_index,
 		})
 	}
@@ -760,7 +816,14 @@ impl ModelArchive {
 			let name_size = reader.read_u16()?;
 			reader.read_string(name_size as _).map(ToOwned::to_owned)
 		})?;
-		Ok(Material {})
+		Ok(Material {
+			name,
+			render_info: Dict::new(),
+			shader_assign: (),
+			texture_names: vec![],
+			samplers: Dict::new(),
+			shader_params: Dict::new(),
+		})
 	}
 }
 
