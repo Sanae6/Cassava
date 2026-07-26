@@ -1,3 +1,29 @@
 PTCL
 
-===== 
+
+===== nn::util::BinaryFileHeader =====
+
+offset | size | type    | description
+-------+------+---------+-----------------------------------------------------------
+0x00   | 0x08 | char[8] | signature
+0x08   | 0x04 | u32     | version number (u8 patch version number, u8 minor version number, u16 major version number) (8.0.0 for odyssey)
+0x0c   | 0x02 | u16     | byte order mark (0xFEFF for big endian, 0xFFFE for little endian)
+0x0e   | 0x01 | u8      | alignment (actual alignment = 1 << this value)
+0x0f   | 0x01 | u8      | target address size
+0x10   | 0x04 | u32     | offset of filename string relative to this header
+0x14   | 0x02 | u16     | is relocated
+0x16   | 0x02 | u16     | offset of first block relative to this header
+0x18   | 0x04 | u32     | offset of relocation table relative to this header
+0x1c   | 0x04 | u32     | file size
+0x20   |      |         | end
+
+===== nn::vfx::BlockHeader (unofficial) =====
+all offsets are relative to the the start of this block's header
+offset | size | type    | description
+-------+------+---------+-----------------------------------------------------------
+0x00   | 0x04 | char[4] | signature
+0x04   | 0x04 | u32     | size
+0x04   | 0x04 | u32     | offset to first child block (?)
+0x04   | 0x04 | u32     | offset to next sibling block
+0x04   | 0x04 | u32     | offset to first attribute (?)
+0x04   | 0x04 | u32     | offset to binary data

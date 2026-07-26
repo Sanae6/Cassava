@@ -1,6 +1,7 @@
 pub mod bffnt;
 pub mod bfres;
 pub mod bntx;
+pub mod ptcl;
 pub mod res_dict;
 pub mod user_data;
 
@@ -40,6 +41,7 @@ pub struct BinaryFileInfo {
 }
 
 #[allow(unused)]
+#[derive(Debug)]
 pub struct BinaryFileHeader {
 	magic: [u8; 8],
 	first_block_offset: u16,
@@ -72,6 +74,7 @@ pub fn read_binary_file_header(
 	reader.seek_rel(2)?;
 	let packed_alignment = reader.read_u8()?;
 	let _address_size = reader.read_u8()?;
+	// not true lol
 	// snafu::ensure!(
 	// 	address_size == 64,
 	// 	UnsupportedAddressSizeSnafu { address_size }
@@ -102,4 +105,18 @@ pub fn read_binary_file_header(
 			file_size,
 		},
 	))
+}
+
+fn read_string_at<'a>(reader: &mut BinaryReader<'a>, offset: usize) -> Result<&'a str, util::Error> {
+	reader.scope(offset, |reader| {
+		let name_size = reader.read_u16()?;
+		reader.read_string(name_size as _)
+	})
+}
+
+fn read_owned_string_at(reader: &mut BinaryReader, offset: usize) -> Result<String, util::Error> {
+	reader.scope(offset, |reader| {
+		let name_size = reader.read_u16()?;
+		reader.read_owned_string(name_size as _)
+	})
 }

@@ -9,7 +9,7 @@ use crate::{
 	nw::{
 		BinaryFileInfo, FileHeaderError,
 		bntx::GpuAccessFlags,
-		read_binary_file_header,
+		read_binary_file_header, read_owned_string_at, read_string_at,
 		res_dict::{Dict, DictError},
 		user_data::UserData,
 	},
@@ -117,9 +117,43 @@ pub enum MaterialError {
 		backtrace: snafu::Backtrace,
 	},
 	IncorrectMaterialMagic,
-	#[snafu(display("{source}"))]
+	#[snafu(transparent)]
 	RenderInfoError {
+		source: DictError<RenderInfoError>,
+	},
+	#[snafu(transparent)]
+	ShaderAssignError {
+		source: ShaderAssignError,
+	},
+}
+
+#[derive(Snafu, Debug)]
+pub enum RenderInfoError {
+	#[snafu(transparent)]
+	ReadError {
 		source: util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(context(suffix(RenderInfoSnafu)))]
+	MismatchedName,
+	InvalidRenderDataType,
+}
+
+#[derive(Snafu, Debug)]
+pub enum ShaderAssignError {
+	#[snafu(transparent)]
+	ReadError {
+		source: util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	AttributesError {
+		source: DictError<util::Error>,
+	},
+	SamplerError {
+		source: DictError<util::Error>,
+	},
+	ShaderOptionError {
+		source: DictError<util::Error>,
 	},
 }
 
@@ -461,18 +495,38 @@ impl std::fmt::Debug for IndexBuffer {
 #[derive(Clone, Debug)]
 pub struct Material {
 	name: String,
-	render_info: Dict<RenderValue>,
-	shader_assign: (),
+	render_info: Dict<Vec<RenderValue>>,
+	shader_assign: ShaderAssign,
 	texture_names: Vec<String>,
 	samplers: Dict<Sampler>,
 	shader_params: Dict<ShaderParam>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum RenderValue {
 	I32(i32),
 	F32(f32),
 	String(String),
+}
+
+impl std::fmt::Debug for RenderValue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::I32(arg0) => arg0.fmt(f),
+			Self::F32(arg0) => arg0.fmt(f),
+			Self::String(arg0) => arg0.fmt(f),
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct ShaderAssign {
+	shader_archive: String,
+	shading_model_name: String,
+	attributes: Dict<String>,
+	samplers: Dict<String>,
+	shader_options: Dict<String>,
+	revision: u32,
 }
 #[derive(Clone, Debug)]
 pub enum ShaderParam {
@@ -484,6 +538,8 @@ pub enum ShaderParam {
 #[derive(Clone, Debug)]
 pub struct Sampler {
 	wrap_mode: (TextureAddressMode, TextureAddressMode, TextureAddressMode),
+	// compare_op: CompareOp,
+	// border_color
 }
 
 #[derive(Clone, Debug)]
@@ -540,6 +596,7 @@ impl ModelArchive {
 			model_dictionary,
 			|reader, dict_name, _| Self::read_model(reader, dict_name, &memory_pool),
 		)?;
+		println!("{embedded_file_array} {embedded_file_dictionary}");
 		let embedded_files = read_dict::<_, util::Error>(
 			reader,
 			embedded_file_array,
@@ -547,6 +604,7 @@ impl ModelArchive {
 			|reader, _, _| {
 				let offset = reader.read_u64()? as usize;
 				let size = reader.read_u64()? as usize;
+				println!("embedded file: {offset} {size}");
 				reader.scope(offset, |reader| reader.read_slice(size).map(<[_]>::to_vec))
 			},
 		)
@@ -565,17 +623,13 @@ impl ModelArchive {
 		dict_name: &str,
 		memory_pool: &[u8],
 	) -> Result<Model, ModelError> {
-		ensure!(
-			reader.read_bytes::<4>()? == *b"FMDL",
-			IncorrectModelMagicSnafu
-		);
+		println!("model");
+		let magic = reader.read_bytes::<4>()?;
+		ensure!(magic == *b"FMDL", IncorrectModelMagicSnafu);
 
 		reader.seek_rel(12)?;
 		let name_offset = reader.read_u64()? as usize;
-		let name = reader.scope(name_offset, |reader| {
-			let name_size = reader.read_u16()?;
-			reader.read_string(name_size as _).map(ToOwned::to_owned)
-		})?;
+		let name = read_string_at(reader, name_offset)?;
 		ensure!(name == dict_name, MismatchedNameModelSnafu);
 		let _ = reader.read_u64()?;
 		let _skeleton_offset = reader.read_u64()? as usize;
@@ -594,6 +648,7 @@ impl ModelArchive {
 		let material_count = reader.read_u16()? as usize;
 		let _user_data_count = reader.read_u16()?;
 		let _total_vertices = reader.read_u32()?;
+		reader.seek_rel(4)?;
 
 		let material_list = reader.scope(material_array, |reader| {
 			reader.read_boxed_array(material_count, |reader, _| Self::read_material(reader))
@@ -627,10 +682,7 @@ impl ModelArchive {
 			|reader, dict_name, _| {
 				let name_offset = reader.read_u64()? as _;
 
-				let name = reader.scope(name_offset, |reader| {
-					let name_size = reader.read_u16()?;
-					reader.read_string(name_size as _).map(ToOwned::to_owned)
-				})?;
+				let name = read_string_at(reader, name_offset)?;
 				ensure!(name == dict_name, MismatchedNameAttribSnafu);
 				let mut format = reader.read_u16()?;
 				if reader.byte_order() == ByteOrder::Little {
@@ -660,8 +712,6 @@ impl ModelArchive {
 		let vertex_count = reader.read_u32()?;
 		let _vertex_skin_count = reader.read_u32()?;
 		reader.seek_rel(2)?;
-
-		println!("actual vertex count: {vertex_count}");
 
 		let buffers = reader
 			.read_boxed_array::<_, VertexInfoError>(buffer_count as _, |reader, index| {
@@ -707,10 +757,7 @@ impl ModelArchive {
 		ensure!(magic == *b"FSHP", IncorrectShapeMagicSnafu);
 		reader.seek_rel(12)?;
 		let name_offset = reader.read_u64()? as _;
-		let name = reader.scope(name_offset, |reader| {
-			let name_size = reader.read_u16()?;
-			reader.read_string(name_size as _).map(ToOwned::to_owned)
-		})?;
+		let name = read_string_at(reader, name_offset)?;
 
 		ensure!(name == dict_name, MismatchedNameShapeSnafu);
 
@@ -739,7 +786,7 @@ impl ModelArchive {
 			.get(material_index)
 			.cloned()
 			.context(MaterialNotFoundSnafu)?;
-		reader.seek_rel(2)?;
+		reader.seek_rel(6)?;
 		let meshes = reader.scope(mesh_array_offset, |reader| {
 			reader
 				.read_boxed_array(mesh_count as usize, |reader, _| {
@@ -811,28 +858,150 @@ impl ModelArchive {
 		let magic = reader.read_bytes::<4>()?;
 		ensure!(magic == *b"FMAT", IncorrectMaterialMagicSnafu);
 		reader.seek_rel(12)?;
-		let name_offset = reader.read_u64()? as _;
-		let name = reader.scope(name_offset, |reader| {
-			let name_size = reader.read_u16()?;
-			reader.read_string(name_size as _).map(ToOwned::to_owned)
+		let name_offset = reader.read_u64()? as usize;
+		let name = read_owned_string_at(reader, name_offset)?;
+		let (render_info_array, render_info_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let shader_assign = reader.read_u64()? as usize;
+		let (_texture_array, texture_name_array) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let sampler_array_maybe = reader.read_u64()?;
+		let (sampler_array, sampler_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let (shader_param_array, shader_param_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let source_param_data_array = reader.read_u64()?;
+		let (_user_data_array, _user_data_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let volatile_flag_array = reader.read_u64()?;
+		let _user_ptr = reader.read_u64()?;
+		let sampler_slot_array = reader.read_u64()? as usize;
+		let texture_slot_array = reader.read_u64()? as usize;
+		let flags = reader.read_u32()?;
+		let index = reader.read_u16()?;
+		let render_info_count = reader.read_u16()?;
+		let texture_count = reader.read_u8()? as usize;
+		let sampler_count = reader.read_u8()?;
+		let shader_param_count = reader.read_u16()?;
+		let shader_param_volatile_count = reader.read_u16()?;
+		let source_param_count = reader.read_u16()?;
+		let raw_param_size = reader.read_u16()?;
+		let _user_data_count = reader.read_u16()?;
+		reader.seek_rel(4)?;
+
+		let render_info = read_dict::<_, RenderInfoError>(
+			reader,
+			render_info_array,
+			render_info_dictionary,
+			|reader, dict_name, _| {
+				let name_offset = reader.read_u64()? as usize;
+				let name = read_owned_string_at(reader, name_offset)?;
+
+				ensure!(name == dict_name, MismatchedNameRenderInfoSnafu);
+				let data_offset = reader.read_u64()? as usize;
+
+				let count = reader.read_u16()? as usize;
+				let data_type = reader.read_u8()?;
+				reader.seek_rel(5)?;
+
+				reader.scope(data_offset, |reader| {
+					let array =
+						match data_type {
+							0 => reader
+								.read_boxed_array(count, |reader, _| reader.read_i32().map(RenderValue::I32))?,
+							1 => reader
+								.read_boxed_array(count, |reader, _| reader.read_f32().map(RenderValue::F32))?,
+							2 => reader.read_boxed_array(count, |reader, _| {
+								let offset = reader.read_u64()? as usize;
+								read_owned_string_at(reader, offset).map(RenderValue::String)
+							})?,
+							_ => return Err(RenderInfoError::InvalidRenderDataType),
+						};
+					Ok(array.into_vec())
+				})
+			},
+		)?;
+
+		let shader_assign = reader.scope(shader_assign, Self::read_shader_assign)?;
+
+		let texture_names = reader.scope(texture_name_array, |reader| {
+			reader
+				.read_boxed_array(texture_count, |reader, _| {
+					let offset = reader.read_u64()? as usize;
+					read_owned_string_at(reader, offset)
+				})
+				.map(<[_]>::into_vec)
 		})?;
+		println!("tex ptrs {texture_names:?}");
+
 		Ok(Material {
 			name,
-			render_info: Dict::new(),
-			shader_assign: (),
-			texture_names: vec![],
+			render_info,
+			shader_assign,
+			texture_names,
 			samplers: Dict::new(),
 			shader_params: Dict::new(),
 		})
 	}
+
+	fn read_shader_assign(reader: &mut BinaryReader) -> Result<ShaderAssign, ShaderAssignError> {
+		let shader_archive = reader.read_u64()? as usize;
+		let shading_model_name = reader.read_u64()? as usize;
+		let (attributes_array, attributes_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let (sampler_array, sampler_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let (options_array, options_dictionary) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let revision = reader.read_u32()?;
+		let _attrib_assign_count = reader.read_u8()?;
+		let _sampler_assign_count = reader.read_u8()?;
+		let _shader_option_count = reader.read_u16()?;
+
+		let shader_archive = read_owned_string_at(reader, shader_archive)?;
+		let shading_model_name = read_owned_string_at(reader, shading_model_name)?;
+		let attributes = read_dict(
+			reader,
+			attributes_array,
+			attributes_dictionary,
+			|reader, _, _| {
+				let offset = reader.read_u64()? as usize;
+				read_owned_string_at(reader, offset)
+			},
+		)
+		.context(AttributesSnafu)?;
+		let samplers = read_dict(reader, sampler_array, sampler_dictionary, |reader, _, _| {
+			let offset = reader.read_u64()? as usize;
+			read_owned_string_at(reader, offset)
+		})
+		.context(SamplerSnafu)?;
+		let shader_options = read_dict(reader, options_array, options_dictionary, |reader, _, _| {
+			let offset = reader.read_u64()? as usize;
+			read_owned_string_at(reader, offset)
+		})
+		.context(ShaderOptionSnafu)?;
+
+		Ok(ShaderAssign {
+			shader_archive,
+			shading_model_name,
+			attributes,
+			samplers,
+			shader_options,
+			revision,
+		})
+	}
 }
 
-pub fn read_dict<T, E: snafu::Error + From<util::Error>>(
-	reader: &mut BinaryReader,
+pub fn read_dict<'a, T: 'a, E: snafu::Error + From<util::Error>>(
+	reader: &mut BinaryReader<'a>,
 	value_list: usize,
 	dictionary_list: usize,
-	mut element_reader: impl FnMut(&mut BinaryReader, &str, usize) -> Result<T, E>,
+	mut element_reader: impl FnMut(&mut BinaryReader<'a>, &str, usize) -> Result<T, E>,
 ) -> Result<Dict<T>, DictError<E>> {
+	if value_list == 0 || dictionary_list == 0 {
+		return Ok(Dict::new());
+	}
+
 	reader.scope::<_, DictError<E>>(dictionary_list, |reader| {
 		reader.seek(dictionary_list)?;
 		let magic = reader.read_bytes::<4>()?;
@@ -845,18 +1014,10 @@ pub fn read_dict<T, E: snafu::Error + From<util::Error>>(
 		let mut map = Dict::with_capacity(count);
 		let mut data_offset = value_list;
 		for i in 0..count {
-			reader.seek(
-				dictionary_list
-					.checked_add(24 + i * 16 + 8)
-					.ok_or(DictError::ReadError {
-						source: util::Error::OutOfBoundsSeek,
-					})?,
-			)?;
-			let name = reader.read_u64()? as usize;
-			let name = reader.scope(name, |reader| {
-				let count = reader.read_u16()?;
-				reader.read_string(count as usize).map(ToOwned::to_owned)
-			})?;
+			reader.seek(dictionary_list)?;
+			reader.seek_rel((24 + i * 16 + 8) as isize)?;
+			let name_offset = reader.read_u64()? as usize;
+			let name = read_owned_string_at(reader, name_offset)?;
 			let element = reader
 				.scope(data_offset, |reader| {
 					let element = element_reader(reader, &name, i);

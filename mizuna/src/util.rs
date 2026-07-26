@@ -220,7 +220,7 @@ impl<'a> BinaryReader<'a> {
 		Ok(self.inner[start..end].try_into().unwrap())
 	}
 
-	pub fn read_slice(&mut self, count: usize) -> Result<&[u8], Error> {
+	pub fn read_slice(&mut self, count: usize) -> Result<&'a [u8], Error> {
 		let start = self.cursor;
 		let end = start + count;
 		if end > self.inner.len() {
@@ -230,7 +230,7 @@ impl<'a> BinaryReader<'a> {
 		Ok(&self.inner[start..end])
 	}
 
-	pub fn read_until(&mut self, terminator: u8) -> &[u8] {
+	pub fn read_until(&mut self, terminator: u8) -> &'a [u8] {
 		let start = self.cursor;
 		let mut end = self.inner.len();
 		for (idx, byte) in self.inner[start..].iter().enumerate() {
@@ -243,12 +243,18 @@ impl<'a> BinaryReader<'a> {
 		&self.inner[start..end]
 	}
 
-	pub fn read_null_terminated_string(&mut self) -> Result<&str, Error> {
+	pub fn read_null_terminated_string(&mut self) -> Result<&'a str, Error> {
 		str::from_utf8(self.read_until(b'\0')).map_err(|_| Error::InvalidUtf8)
 	}
 
-	pub fn read_string(&mut self, count: usize) -> Result<&str, Error> {
+	pub fn read_string(&mut self, count: usize) -> Result<&'a str, Error> {
 		str::from_utf8(self.read_slice(count)?).map_err(|_| Error::InvalidUtf8)
+	}
+
+	pub fn read_owned_string(&mut self, count: usize) -> Result<String, Error> {
+		str::from_utf8(self.read_slice(count)?)
+			.map_err(|_| Error::InvalidUtf8)
+			.map(str::to_owned)
 	}
 
 	pub fn read_array<const N: usize, R, E>(
@@ -282,7 +288,7 @@ impl<'a> BinaryReader<'a> {
 		Ok(unsafe { array.assume_init() })
 	}
 
-	pub fn scope<R, E: From<Error>>(
+	pub fn scope<R: 'a, E: From<Error>>(
 		&mut self,
 		seek_to: usize,
 		func: impl FnOnce(&mut Self) -> Result<R, E>,
@@ -290,6 +296,19 @@ impl<'a> BinaryReader<'a> {
 		let current = self.position();
 		self.seek(seek_to)?;
 		let result = func(self);
+		self.seek(current)?;
+		result
+	}
+
+	pub fn subfile_scope<R: 'a, E: From<Error>>(
+		&mut self,
+		seek_to: usize,
+		func: impl FnOnce(&mut Self) -> Result<R, E>,
+	) -> Result<R, E> {
+		let current = self.position();
+		self.seek(seek_to)?;
+		let mut sub_reader = BinaryReader::new(&self.inner[self.cursor..], self.byte_order);
+		let result = func(&mut sub_reader);
 		self.seek(current)?;
 		result
 	}
