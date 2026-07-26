@@ -4,6 +4,7 @@ pub mod bntx;
 pub mod ptcl;
 pub mod res_dict;
 pub mod user_data;
+pub mod bnsh;
 
 use snafu::{OptionExt, Snafu};
 

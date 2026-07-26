@@ -1,6 +1,6 @@
 use std::{fs, mem::MaybeUninit, path::PathBuf};
 
-use glam::{IVec3, UVec3, Vec2, Vec3};
+use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 use num_traits::PrimInt;
 use snafu::prelude::*;
 
@@ -160,6 +160,7 @@ impl BinaryWriter {
 	}
 }
 
+#[derive(Clone)]
 pub struct BinaryReader<'a> {
 	byte_order: ByteOrder,
 	cursor: usize,
@@ -185,6 +186,10 @@ impl<'a> BinaryReader<'a> {
 
 	pub fn position(&self) -> usize {
 		self.cursor
+	}
+
+	pub fn len(&self) -> usize {
+		self.inner.len()
 	}
 
 	pub fn seek(&mut self, offset: usize) -> Result<(), Error> {
@@ -288,6 +293,14 @@ impl<'a> BinaryReader<'a> {
 		Ok(unsafe { array.assume_init() })
 	}
 
+	pub fn read_vec<R, E>(
+		&mut self,
+		count: usize,
+		func: impl FnMut(&mut Self, usize) -> Result<R, E>,
+	) -> Result<Vec<R>, E> {
+		self.read_boxed_array(count, func).map(<[R]>::into_vec)
+	}
+
 	pub fn scope<R: 'a, E: From<Error>>(
 		&mut self,
 		seek_to: usize,
@@ -383,6 +396,18 @@ impl<'a> BinaryReader<'a> {
 		})
 	}
 
+	pub fn read_bool(&mut self) -> Result<bool, Error> {
+		self.read_u8().map(|value| value != 0)
+	}
+
+	pub fn read_uvec2(&mut self) -> Result<UVec2, Error> {
+		Ok(UVec2::new(self.read_u32()?, self.read_u32()?))
+	}
+
+	pub fn read_ivec2(&mut self) -> Result<IVec2, Error> {
+		Ok(IVec2::new(self.read_i32()?, self.read_i32()?))
+	}
+
 	pub fn read_vec2(&mut self) -> Result<Vec2, Error> {
 		Ok(Vec2::new(self.read_f32()?, self.read_f32()?))
 	}
@@ -405,6 +430,33 @@ impl<'a> BinaryReader<'a> {
 
 	pub fn read_uvec3(&mut self) -> Result<UVec3, Error> {
 		Ok(UVec3::new(
+			self.read_u32()?,
+			self.read_u32()?,
+			self.read_u32()?,
+		))
+	}
+
+	pub fn read_vec4(&mut self) -> Result<Vec4, Error> {
+		Ok(Vec4::new(
+			self.read_f32()?,
+			self.read_f32()?,
+			self.read_f32()?,
+			self.read_f32()?,
+		))
+	}
+
+	pub fn read_ivec4(&mut self) -> Result<IVec4, Error> {
+		Ok(IVec4::new(
+			self.read_i32()?,
+			self.read_i32()?,
+			self.read_i32()?,
+			self.read_i32()?,
+		))
+	}
+
+	pub fn read_uvec4(&mut self) -> Result<UVec4, Error> {
+		Ok(UVec4::new(
+			self.read_u32()?,
 			self.read_u32()?,
 			self.read_u32()?,
 			self.read_u32()?,

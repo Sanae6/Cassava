@@ -25,6 +25,7 @@ pub enum Error {
 	},
 	#[snafu(display("failed to read file header"))]
 	FileHeaderError {
+		#[snafu(backtrace)]
 		source: FileHeaderError,
 	},
 	UnsupportedVersion,
@@ -32,6 +33,7 @@ pub enum Error {
 	IncorrectContainerMagic,
 	#[snafu(transparent)]
 	TextureError {
+		#[snafu(backtrace)]
 		source: DictError<TextureError>,
 	},
 }
@@ -44,21 +46,37 @@ pub enum TextureError {
 		backtrace: snafu::Backtrace,
 	},
 	#[snafu(display("expected magic to be 'BRTI'"))]
-	IncorrectTextureInfoMagic,
+	IncorrectTextureInfoMagic { backtrace: snafu::Backtrace },
 	#[snafu(display("invalid storage dimension"))]
-	InvalidStorageDimension,
-	#[snafu(display("invalid tile mode"))]
-	InvalidTileMode,
-	#[snafu(display("invalid channel format"))]
-	InvalidChannelFormat,
-	#[snafu(display("invalid type format"))]
-	InvalidTypeFormat,
+	InvalidStorageDimension {
+		storage_dimension: u8,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(display("invalid tile mode {tile_mode:X}"))]
+	InvalidTileMode {
+		tile_mode: u16,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(display("invalid channel format {channel_format:X}"))]
+	InvalidChannelFormat {
+		channel_format: u8,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(display("invalid type format {type_format:X}"))]
+	InvalidTypeFormat {
+		type_format: u8,
+		backtrace: snafu::Backtrace,
+	},
 	#[snafu(transparent)]
-	UserDataError { source: DictError<UserDataError> },
-	#[snafu(display("invalid format combination"))]
-	InvalidFormatCombination,
+	UserDataError {
+		#[snafu(backtrace)]
+		source: DictError<UserDataError>,
+	},
 	#[snafu(transparent)]
-	SwizzleError { source: SwizzleError },
+	SwizzleError {
+		source: SwizzleError,
+		backtrace: snafu::Backtrace,
+	},
 }
 
 #[derive(FromPrimitive, ToPrimitive, Clone, Copy, Debug)]
@@ -116,6 +134,55 @@ pub enum ChannelFormat {
 	B5G5R5A1 = 0x3b,
 }
 
+impl ChannelFormat {
+	fn stride(&self) -> u32 {
+		match self {
+			ChannelFormat::None => 0,
+			ChannelFormat::R8 => 1,
+			ChannelFormat::R4G4B4A4 => 2,
+			ChannelFormat::R5G5B5A1 => 2,
+			ChannelFormat::A1B5G5R5 => 2,
+			ChannelFormat::R5G6B5 => 2,
+			ChannelFormat::B5G6R5 => 2,
+			ChannelFormat::R8G8 => 2,
+			ChannelFormat::R16 => 2,
+			ChannelFormat::R8G8B8A8 => 4,
+			ChannelFormat::B8G8R8A8 => 4,
+			ChannelFormat::R9G9B9E5F => 4,
+			ChannelFormat::R10G10B10A2 => 4,
+			ChannelFormat::R11G11B10F => 4,
+			ChannelFormat::R16G16 => 4,
+			ChannelFormat::D24S8 => 4,
+			ChannelFormat::R32 => 4,
+			ChannelFormat::R16G16B16A16 => 8,
+			ChannelFormat::D32FS8 => 8,
+			ChannelFormat::R32G32 => 8,
+			ChannelFormat::R32G32B32 => 12,
+			ChannelFormat::R32G32B32A32 => 16,
+			ChannelFormat::BC1 | ChannelFormat::BC4 => 8,
+			ChannelFormat::BC2 | ChannelFormat::BC3 => 16,
+			ChannelFormat::BC5 => 16,
+			ChannelFormat::BC6H => 16,
+			ChannelFormat::BC7U => 16,
+			ChannelFormat::Astc4x4
+			| ChannelFormat::Astc5x4
+			| ChannelFormat::Astc5x5
+			| ChannelFormat::Astc6x5
+			| ChannelFormat::Astc6x6
+			| ChannelFormat::Astc8x5
+			| ChannelFormat::Astc8x6
+			| ChannelFormat::Astc8x8
+			| ChannelFormat::Astc10x5
+			| ChannelFormat::Astc10x6
+			| ChannelFormat::Astc10x8
+			| ChannelFormat::Astc10x10
+			| ChannelFormat::Astc12x10
+			| ChannelFormat::Astc12x12 => 16,
+			ChannelFormat::B5G5R5A1 => 2,
+		}
+	}
+}
+
 #[derive(FromPrimitive, ToPrimitive, Clone, Copy, Debug)]
 pub enum TypeFormat {
 	Unorm = 1,
@@ -152,11 +219,8 @@ impl FormatInfo {
 		}
 	}
 
-	pub fn from_image_format(
-		channel_format: ChannelFormat,
-		type_format: TypeFormat,
-	) -> Option<FormatInfo> {
-		let format = match (channel_format, type_format) {
+	pub fn from_image_format(channel_format: ChannelFormat, type_format: TypeFormat) -> FormatInfo {
+		match (channel_format, type_format) {
 			(ChannelFormat::BC1, _) => Self::block(8, 4, 4, 1),
 			(ChannelFormat::BC2, _) => Self::block(16, 4, 4, 1),
 			(ChannelFormat::BC3, _) => Self::block(16, 4, 4, 1),
@@ -164,10 +228,22 @@ impl FormatInfo {
 			(ChannelFormat::BC5, _) => Self::block(16, 4, 4, 1),
 			(ChannelFormat::BC6H, _) => Self::block(16, 4, 4, 1),
 			(ChannelFormat::BC7U, _) => Self::block(16, 4, 4, 1),
-			_ => return None,
-		};
-
-		Some(format)
+			(ChannelFormat::Astc4x4, _) => Self::block(16, 4, 4, 1),
+			(ChannelFormat::Astc5x4, _) => Self::block(16, 5, 4, 1),
+			(ChannelFormat::Astc5x5, _) => Self::block(16, 5, 5, 1),
+			(ChannelFormat::Astc6x5, _) => Self::block(16, 6, 5, 1),
+			(ChannelFormat::Astc6x6, _) => Self::block(16, 6, 6, 1),
+			(ChannelFormat::Astc8x5, _) => Self::block(16, 8, 5, 1),
+			(ChannelFormat::Astc8x6, _) => Self::block(16, 8, 6, 1),
+			(ChannelFormat::Astc8x8, _) => Self::block(16, 8, 8, 1),
+			(ChannelFormat::Astc10x5, _) => Self::block(16, 10, 5, 1),
+			(ChannelFormat::Astc10x6, _) => Self::block(16, 10, 6, 1),
+			(ChannelFormat::Astc10x8, _) => Self::block(16, 10, 8, 1),
+			(ChannelFormat::Astc10x10, _) => Self::block(16, 10, 10, 1),
+			(ChannelFormat::Astc12x10, _) => Self::block(16, 12, 10, 1),
+			(ChannelFormat::Astc12x12, _) => Self::block(16, 12, 12, 1),
+			(channel_format, _) => Self::block(channel_format.stride(), 1, 1, 1),
+		}
 	}
 }
 
@@ -216,13 +292,21 @@ pub struct GfxTextureInfo {
 	pub swizzle: u16,
 	pub mip_levels: u16,
 	pub sample_count: u16,
-	pub image_format: (ChannelFormat, TypeFormat),
+	pub type_format: TypeFormat,
+	pub channel_format: ChannelFormat,
 	pub gpu_access_flags: GpuAccessFlags,
 	pub width: u32,
 	pub height: u32,
 	pub depth: u32,
 	pub array_layers: u32,
 	pub packaged_texture_layout: u32,
+}
+
+impl GfxTextureInfo {
+	/// For ease of pattern matching on the image format of a texture
+	pub fn image_format(&self) -> (ChannelFormat, TypeFormat) {
+		(self.channel_format, self.type_format)
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -269,24 +353,31 @@ impl TextureArchive {
 				let offset = reader.read_u64()? as usize;
 				reader.seek(offset)?;
 				if reader.read_bytes::<4>()? != *b"BRTI" {
-					return Err(TextureError::IncorrectTextureInfoMagic);
+					return Err(IncorrectTextureInfoMagicSnafu.build());
 				}
 
 				reader.seek_rel(12)?;
 				let bitfield = reader.read_u8()?;
-				let storage_dimension =
-					StorageDimension::from_u8(reader.read_u8()?).context(InvalidStorageDimensionSnafu)?;
-				let tile_mode = TileMode::from_u16(reader.read_u16()?).context(InvalidTileModeSnafu)?;
+				let storage_dimension = reader.read_u8()?;
+				let storage_dimension = StorageDimension::from_u8(storage_dimension)
+					.context(InvalidStorageDimensionSnafu { storage_dimension })?;
+				let tile_mode = reader.read_u16()?;
+				let tile_mode =
+					TileMode::from_u16(tile_mode).context(InvalidTileModeSnafu { tile_mode })?;
 				let (swizzle, mip_levels, sample_count) =
 					(reader.read_u16()?, reader.read_u16()?, reader.read_u16()?);
 				reader.seek_rel(2)?;
 				let image_format = reader.read_u32()?;
-				let image_format = (
-					ChannelFormat::from_u32((image_format & 0xFF00) >> 8)
-						.context(InvalidChannelFormatSnafu)?,
-					TypeFormat::from_u32(image_format & 0xFF).context(InvalidTypeFormatSnafu)?,
+				let (type_format, channel_format) = (
+					TypeFormat::from_u32(image_format & 0xFF).context(InvalidTypeFormatSnafu {
+						type_format: (image_format & 0xFF) as u8,
+					})?,
+					ChannelFormat::from_u32((image_format & 0xFF00) >> 8).context(
+						InvalidChannelFormatSnafu {
+							channel_format: ((image_format & 0xFF00) >> 8) as u8,
+						},
+					)?,
 				);
-				println!("image format: {image_format:?}");
 				let gpu_access_flags = GpuAccessFlags::from_bits(reader.read_u32()?);
 				let (width, height, depth) = (reader.read_u32()?, reader.read_u32()?, reader.read_u32()?);
 				let array_layers = reader.read_u32()?;
@@ -302,7 +393,8 @@ impl TextureArchive {
 					swizzle,
 					mip_levels,
 					sample_count,
-					image_format,
+					type_format,
+					channel_format,
 					gpu_access_flags,
 					width,
 					height,
@@ -325,8 +417,7 @@ impl TextureArchive {
 					let start = reader.read_u64()? as usize;
 					reader.seek(start)?;
 					let swizzled_data = reader.read_slice(total_texture_size)?;
-					let format_info = FormatInfo::from_image_format(image_format.0, image_format.1)
-						.context(InvalidFormatCombinationSnafu)?;
+					let format_info = FormatInfo::from_image_format(channel_format, type_format);
 					Ok(tegra_swizzle::surface::deswizzle_surface(
 						width,
 						height,

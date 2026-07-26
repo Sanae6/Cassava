@@ -1,6 +1,10 @@
 use std::{collections::HashMap, ops::Range};
 
 use bitfield_struct::bitfield;
+use glam::{
+	BVec2, BVec3, BVec4, IVec2, IVec3, IVec4, Mat2, Mat3, Mat4, Quat, UVec2, UVec3, UVec4, Vec2,
+	Vec3, Vec4,
+};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
@@ -11,7 +15,6 @@ use crate::{
 		bntx::GpuAccessFlags,
 		read_binary_file_header, read_owned_string_at, read_string_at,
 		res_dict::{Dict, DictError},
-		user_data::UserData,
 	},
 	util::{self, BinaryReader, ByteOrder},
 };
@@ -32,9 +35,11 @@ pub enum Error {
 	IncorrectContainerMagic,
 	#[snafu(transparent)]
 	ModelError {
+		#[snafu(backtrace)]
 		source: DictError<ModelError>,
 	},
 	EmbeddedFileError {
+		#[snafu(backtrace)]
 		source: DictError<util::Error>,
 	},
 }
@@ -50,18 +55,48 @@ pub enum ModelError {
 	#[snafu(context(suffix(ModelSnafu)))]
 	MismatchedName,
 	#[snafu(transparent)]
-	VertexInfoError {
-		source: VertexInfoError,
+	SkeletonError {
+		#[snafu(backtrace)]
+		source: SkeletonError,
 	},
 	#[snafu(transparent)]
 	ShapeError {
+		#[snafu(backtrace)]
 		source: DictError<ShapeError>,
 	},
 	#[snafu(transparent)]
 	MaterialError {
+		#[snafu(backtrace)]
 		source: MaterialError,
 	},
 }
+
+#[derive(Snafu, Debug)]
+pub enum SkeletonError {
+	#[snafu(transparent)]
+	ReadError {
+		source: util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	IncorrectSkeletonMagic,
+	#[snafu(transparent)]
+	BoneError {
+		#[snafu(backtrace)]
+		source: BoneError,
+	},
+}
+
+#[derive(Snafu, Debug)]
+pub enum BoneError {
+	#[snafu(transparent)]
+	ReadError {
+		source: util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(context(suffix(BoneSnafu)))]
+	MismatchedName,
+}
+
 #[derive(Snafu, Debug)]
 pub enum VertexInfoError {
 	#[snafu(transparent)]
@@ -72,6 +107,7 @@ pub enum VertexInfoError {
 	IncorrectVertexMagic,
 	#[snafu(transparent)]
 	VertexAttribError {
+		#[snafu(backtrace)]
 		source: DictError<VertexAttribError>,
 	},
 	VertexBufferOutsideOfMemoryPool,
@@ -99,7 +135,13 @@ pub enum ShapeError {
 	IncorrectShapeMagic,
 	#[snafu(transparent)]
 	VertexInfoError {
+		#[snafu(backtrace)]
 		source: VertexInfoError,
+	},
+	#[snafu(transparent)]
+	KeyShapeError {
+		#[snafu(backtrace)]
+		source: DictError<util::Error>,
 	},
 	InvalidPrimitiveTopology,
 	InvalidIndexFormat,
@@ -119,11 +161,23 @@ pub enum MaterialError {
 	IncorrectMaterialMagic,
 	#[snafu(transparent)]
 	RenderInfoError {
+		#[snafu(backtrace)]
 		source: DictError<RenderInfoError>,
 	},
 	#[snafu(transparent)]
 	ShaderAssignError {
+		#[snafu(backtrace)]
 		source: ShaderAssignError,
+	},
+	#[snafu(context(suffix(MaterialSnafu)))]
+	SamplerError {
+		#[snafu(backtrace)]
+		source: DictError<SamplerError>,
+	},
+	#[snafu(transparent)]
+	ShaderParamError {
+		#[snafu(backtrace)]
+		source: DictError<ShaderParamError>,
 	},
 }
 
@@ -147,14 +201,43 @@ pub enum ShaderAssignError {
 		backtrace: snafu::Backtrace,
 	},
 	AttributesError {
+		#[snafu(backtrace)]
 		source: DictError<util::Error>,
 	},
+	#[snafu(context(suffix(ShaderSnafu)))]
 	SamplerError {
+		#[snafu(backtrace)]
 		source: DictError<util::Error>,
 	},
 	ShaderOptionError {
+		#[snafu(backtrace)]
 		source: DictError<util::Error>,
 	},
+}
+
+#[derive(Snafu, Debug)]
+pub enum SamplerError {
+	#[snafu(transparent)]
+	ReadError {
+		source: util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	InvalidWrapMode,
+	InvalidCompareOp,
+	InvalidBorderColor,
+}
+
+#[derive(Snafu, Debug)]
+pub enum ShaderParamError {
+	#[snafu(transparent)]
+	ReadError {
+		source: util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(context(suffix(ShaderParamSnafu)))]
+	MismatchedName,
+	InvalidParamType,
+	InvalidTextureSrtMode,
 }
 
 pub struct ModelArchive {
@@ -186,12 +269,101 @@ impl std::fmt::Debug for ModelArchive {
 pub struct Model {
 	pub skeleton: Skeleton,
 	pub shapes: Dict<Shape>,
-	pub materials: Dict<Material>,
-	pub user_data: Dict<UserData>,
 }
 
 #[derive(Debug)]
-pub struct Skeleton;
+pub struct Skeleton {
+	pub bones: Vec<Bone>,
+	pub matrices_to_bones: Vec<u16>,
+	pub inverse_model_matrices: Vec<Mat4>,
+	pub scaling_mode: ScalingMode,
+	pub use_euler_rotation: bool,
+}
+
+#[bitfield(u32)]
+struct SkeletonFlags {
+	#[bits(8)]
+	_unused: u32,
+	#[bits(2)]
+	scaling_mode: u8,
+	#[bits(2)]
+	_unused: u8,
+	use_euler_rotation: bool,
+	#[bits(19)]
+	_unused: u32,
+}
+
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScalingMode {
+	None,
+	Standard,
+	Maya,
+	Softimage,
+}
+
+#[derive(Debug)]
+pub struct Bone {
+	pub name: String,
+	pub index: u16,
+	pub parent_index: Option<u16>,
+	pub smooth_matrix_index: Option<u16>,
+	pub rigid_matrix_index: Option<u16>,
+	pub billboard_index: Option<u16>,
+	pub scale: Vec3,
+	pub rotation: BoneRotation,
+	pub position: Vec3,
+	// flags
+	pub visible: bool,
+
+	pub billboard_transformation: BillboardTransform,
+	pub transform: TransformFlags,
+	pub cumulative_transform: TransformFlags,
+}
+
+#[derive(Debug)]
+pub enum BoneRotation {
+	Quat(Quat),
+	Euler(Vec3),
+}
+/// see [bfreslibrary](https://github.com/KillzXGaming/BfresLibrary/blob/master/BfresLibrary/Shared/Models/Skeleton/Bone.cs#L597)
+/// there are some explanations that are useful to describe these
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BillboardTransform {
+	None,
+	Child,
+	WorldViewVector,
+	WorldViewPoint,
+	ScreenViewVector,
+	ScreenViewPoint,
+	YAxisViewVector,
+	YAxisViewPoint,
+}
+#[bitfield(u8)]
+pub struct TransformFlags {
+	scale_uniform: bool,
+	scale_volume_one: bool,
+	rotate_zero: bool,
+	translate_zero: bool,
+	#[bits(4)]
+	_padding: u8,
+}
+#[bitfield(u32)]
+struct BoneFlags {
+	visible: bool,
+	#[bits(11)]
+	_unused: u32,
+	use_euler_rotation: bool,
+	#[bits(3)]
+	_unused: u32,
+	#[bits(3)]
+	billboard_transform: u8,
+	#[bits(5)]
+	_unused: u32,
+	#[bits(4)]
+	transform: TransformFlags,
+	#[bits(4)]
+	transform_cumulative: TransformFlags,
+}
 
 #[derive(Debug)]
 pub struct VertexInfo {
@@ -424,11 +596,16 @@ impl VertexAttribFormat {
 pub struct Shape {
 	pub vertex_info: VertexInfo,
 	pub meshes: Vec<Mesh>,
+	pub key_shapes: Dict<KeyShape>,
 	pub flags: ShapeFlags,
 	pub material: Material,
 	pub base_bone_index: u16,
 	// todo bounding box
 	// todo bounding sphere
+}
+#[derive(Debug)]
+pub struct KeyShape {
+	pub target_attributes: [u8; 18],
 }
 #[bitfield(u32)]
 pub struct ShapeFlags {
@@ -494,12 +671,14 @@ impl std::fmt::Debug for IndexBuffer {
 
 #[derive(Clone, Debug)]
 pub struct Material {
-	name: String,
-	render_info: Dict<Vec<RenderValue>>,
-	shader_assign: ShaderAssign,
-	texture_names: Vec<String>,
-	samplers: Dict<Sampler>,
-	shader_params: Dict<ShaderParam>,
+	pub name: String,
+	pub render_info: Dict<Vec<RenderValue>>,
+	pub shader_assign: Option<ShaderAssign>,
+	pub texture_names: Vec<String>,
+	pub samplers: Dict<Sampler>,
+	pub shader_params: Dict<ShaderParam>,
+	pub texture_slots: Vec<i64>,
+	pub sampler_slots: Vec<i64>,
 }
 
 #[derive(Clone)]
@@ -521,29 +700,142 @@ impl std::fmt::Debug for RenderValue {
 
 #[derive(Clone, Debug)]
 pub struct ShaderAssign {
-	shader_archive: String,
-	shading_model_name: String,
-	attributes: Dict<String>,
-	samplers: Dict<String>,
-	shader_options: Dict<String>,
-	revision: u32,
+	pub shader_archive: String,
+	pub shading_model_name: String,
+	pub attributes: Dict<String>,
+	pub samplers: Dict<String>,
+	pub shader_options: Dict<String>,
+	pub revision: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct ShaderParam {
+	pub uniform_offset: i32,
+	pub depended_index: u16,
+	pub depend_index: u16,
+	pub value: ParamValue,
+}
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+enum ParamType {
+	Bool = 0,
+	BVec2 = 1,
+	BVec3 = 2,
+	BVec4 = 3,
+	I32 = 4,
+	IVec2 = 5,
+	IVec3 = 6,
+	IVec4 = 7,
+	U32 = 8,
+	UVec2 = 9,
+	UVec3 = 10,
+	UVec4 = 11,
+	F32 = 12,
+	Vec2 = 13,
+	Vec3 = 14,
+	Vec4 = 15,
+	Mat2 = 17,
+	Mat2x3 = 18,
+	Mat2x4 = 19,
+	Mat3x2 = 21,
+	Mat3 = 22,
+	Mat3x4 = 23,
+	Mat4x2 = 25,
+	Mat4x3 = 26,
+	Mat4 = 27,
+	Srt2D = 28,
+	Srt3D = 29,
+	TexSrt = 30,
 }
 #[derive(Clone, Debug)]
-pub enum ShaderParam {
+pub enum ParamValue {
+	Bool(bool),
+	BVec2(BVec2),
+	BVec3(BVec3),
+	BVec4(BVec4),
 	I32(i32),
+	IVec2(IVec2),
+	IVec3(IVec3),
+	IVec4(IVec4),
+	U32(u32),
+	UVec2(UVec2),
+	UVec3(UVec3),
+	UVec4(UVec4),
 	F32(f32),
-	String(String),
+	Vec2(Vec2),
+	Vec3(Vec3),
+	Vec4(Vec4),
+	Mat2(Mat2),
+	Mat2x3(Mat3),
+	Mat2x4(Mat4),
+	Mat3x2(Mat3),
+	Mat3(Mat3),
+	Mat3x4(Mat4),
+	Mat4x2(Mat4),
+	Mat4x3(Mat4),
+	Mat4(Mat4),
+	Srt2D {
+		scale: Vec2,
+		rotation: f32,
+		translation: Vec2,
+	},
+	Srt3D {
+		scale: Vec3,
+		rotation: Vec3,
+		translation: Vec3,
+	},
+	TextureSrt {
+		mode: TextureSrtMode,
+		scale: Vec2,
+		rotation: f32,
+		translation: Vec2,
+	},
+}
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureSrtMode {
+	Maya,
+	Autodesk3dsMax,
+	Softimage,
 }
 
 #[derive(Clone, Debug)]
 pub struct Sampler {
-	wrap_mode: (TextureAddressMode, TextureAddressMode, TextureAddressMode),
-	// compare_op: CompareOp,
-	// border_color
+	pub wrap_modes: [WrapMode; 3],
+	pub compare_op: CompareOp,
+	pub border_color: BorderColor,
+	pub anisotropic_level: u8,
+	pub filter_flags: u16,
+	pub min_lod: f32,
+	pub max_lod: f32,
+	pub lod_bias: f32,
 }
 
-#[derive(Clone, Debug)]
-enum TextureAddressMode {}
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WrapMode {
+	Repeat,
+	MirrorRepeat,
+	ClampToEdge,
+	ClampToBorder,
+	MirrorClampToBorder,
+}
+
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompareOp {
+	Never,
+	LessThan,
+	Equal,
+	LessThanEqual,
+	GreaterThan,
+	NotEqual,
+	GreaterThanEqual,
+	Always,
+}
+
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BorderColor {
+	White,
+	TransparentBlack,
+	Black,
+}
 
 impl ModelArchive {
 	pub fn read(reader: &mut BinaryReader) -> Result<ModelArchive, Error> {
@@ -557,7 +849,6 @@ impl ModelArchive {
 		})?;
 		let (model_array, model_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
-		// reader.seek_rel(32)?;
 		let (skel_anim_array, skel_anim_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
 		let (material_anim_array, material_anim_dictionary) =
@@ -575,13 +866,9 @@ impl ModelArchive {
 
 		let memory_pool = reader.scope(memory_pool_offset, |reader| -> Result<_, Error> {
 			let _a = reader.read_u32()?;
-			println!("{:X} {_a:X}", reader.position());
 			let memory_pool_size = reader.read_u32()?;
-			println!("{:X} {memory_pool_size:X}", reader.position());
 			let memory_pool_offset = reader.read_u64()?;
-			println!("{:X} {memory_pool_offset:X}", reader.position());
 
-			println!("{memory_pool_offset:X} {memory_pool_size:X}");
 			let memory_pool = reader.scope(memory_pool_offset as usize, |reader| {
 				reader
 					.read_slice(memory_pool_size as usize)
@@ -596,7 +883,6 @@ impl ModelArchive {
 			model_dictionary,
 			|reader, dict_name, _| Self::read_model(reader, dict_name, &memory_pool),
 		)?;
-		println!("{embedded_file_array} {embedded_file_dictionary}");
 		let embedded_files = read_dict::<_, util::Error>(
 			reader,
 			embedded_file_array,
@@ -604,7 +890,6 @@ impl ModelArchive {
 			|reader, _, _| {
 				let offset = reader.read_u64()? as usize;
 				let size = reader.read_u64()? as usize;
-				println!("embedded file: {offset} {size}");
 				reader.scope(offset, |reader| reader.read_slice(size).map(<[_]>::to_vec))
 			},
 		)
@@ -623,7 +908,6 @@ impl ModelArchive {
 		dict_name: &str,
 		memory_pool: &[u8],
 	) -> Result<Model, ModelError> {
-		println!("model");
 		let magic = reader.read_bytes::<4>()?;
 		ensure!(magic == *b"FMDL", IncorrectModelMagicSnafu);
 
@@ -632,8 +916,8 @@ impl ModelArchive {
 		let name = read_string_at(reader, name_offset)?;
 		ensure!(name == dict_name, MismatchedNameModelSnafu);
 		let _ = reader.read_u64()?;
-		let _skeleton_offset = reader.read_u64()? as usize;
-		let _vertex_info_offset = reader.read_u64()? as usize;
+		let skeleton_offset = reader.read_u64()? as usize;
+		let _vertex_info_array = reader.read_u64()? as usize; // shapes point to their vertex buffers anyways
 		let (shape_array, shape_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
 		let (material_array, _material_dictionary) =
@@ -650,6 +934,8 @@ impl ModelArchive {
 		let _total_vertices = reader.read_u32()?;
 		reader.seek_rel(4)?;
 
+		let skeleton = reader.scope(skeleton_offset, Self::read_skeleton)?;
+
 		let material_list = reader.scope(material_array, |reader| {
 			reader.read_boxed_array(material_count, |reader, _| Self::read_material(reader))
 		})?;
@@ -657,11 +943,89 @@ impl ModelArchive {
 			Self::read_shape(reader, name, memory_pool, &material_list)
 		})?;
 
-		Ok(Model {
-			skeleton: Skeleton,
-			shapes,
-			materials: Dict::new(),
-			user_data: Dict::new(),
+		Ok(Model { skeleton, shapes })
+	}
+
+	fn read_skeleton(reader: &mut BinaryReader) -> Result<Skeleton, SkeletonError> {
+		let magic = reader.read_bytes::<4>()?;
+		ensure!(magic == *b"FSKL", IncorrectSkeletonMagicSnafu);
+		reader.seek_rel(12)?;
+
+		let (_user_data_dictionary, bone_array) =
+			(reader.read_u64()? as usize, reader.read_u64()? as usize);
+		let matrix_to_bone_array = reader.read_u64()? as usize; // smooth + rigid
+		let inverse_model_matrix_array = reader.read_u64()? as usize; // smooth
+		reader.seek_rel(24)?;
+		let flags = SkeletonFlags::from_bits(reader.read_u32()?);
+		let bone_count = reader.read_u16()? as usize;
+		let smooth_matrix_count = reader.read_u16()? as usize;
+		let rigid_matrix_count = reader.read_u16()? as usize;
+		reader.seek_rel(6)?;
+		let matrices_to_bones = reader.scope(matrix_to_bone_array, |reader| {
+			reader.read_vec(smooth_matrix_count + rigid_matrix_count, |reader, _| {
+				reader.read_u16()
+			})
+		})?;
+		let inverse_model_matrices = reader.scope(inverse_model_matrix_array, |reader| {
+			reader.read_vec(smooth_matrix_count, |reader, _| -> Result<_, util::Error> {
+				let mat34 = reader.read_array::<4, _, _>(|reader, _| Ok(reader.read_vec3()?.to_array()))?;
+				let mut rows = [[0.0f32; 4]; 4];
+				for j in 0..3 {
+					for i in 0..4 {
+						rows[j][i] = mat34[i][j];
+					}
+				}
+				Ok(Mat4::from_cols_array_2d(&rows))
+			})
+		})?;
+
+		let bones = reader.scope(bone_array, |reader| {
+			reader.read_vec(bone_count, |reader, _| Self::read_bone(reader))
+		})?;
+
+		Ok(Skeleton {
+			bones,
+			matrices_to_bones,
+			inverse_model_matrices,
+			scaling_mode: ScalingMode::from_u8(flags.scaling_mode()).unwrap(),
+			use_euler_rotation: flags.use_euler_rotation(),
+		})
+	}
+
+	fn read_bone(reader: &mut BinaryReader) -> Result<Bone, BoneError> {
+		let name_offset = reader.read_u64()? as usize;
+		let name = read_owned_string_at(reader, name_offset)?;
+		reader.seek_rel(32)?; // skipping user data
+		let optional = |value: i16| (value >= 0).then_some(value.cast_unsigned());
+		let index = reader.read_u16()?;
+		let parent_index = optional(reader.read_i16()?);
+		let smooth_matrix_index = optional(reader.read_i16()?);
+		let rigid_matrix_index = optional(reader.read_i16()?);
+		let billboard_index = optional(reader.read_i16()?);
+		let _user_data_count = reader.read_u16()?;
+		let flags = BoneFlags::from_bits(reader.read_u32()?);
+		let scale = reader.read_vec3()?;
+		let rotation = reader.read_vec4()?;
+		let position = reader.read_vec3()?;
+		let rotation = match flags.use_euler_rotation() {
+			true => BoneRotation::Euler(Vec3::from_slice(&rotation.to_array()[..3])),
+			false => BoneRotation::Quat(Quat::from_array(rotation.to_array())),
+		};
+
+		Ok(Bone {
+			name,
+			index,
+			parent_index,
+			smooth_matrix_index,
+			rigid_matrix_index,
+			billboard_index,
+			scale,
+			rotation,
+			position,
+			visible: flags.visible(),
+			billboard_transformation: BillboardTransform::from_u8(flags.billboard_transform()).unwrap(),
+			transform: flags.transform(),
+			cumulative_transform: flags.transform_cumulative(),
 		})
 	}
 
@@ -713,32 +1077,30 @@ impl ModelArchive {
 		let _vertex_skin_count = reader.read_u32()?;
 		reader.seek_rel(2)?;
 
-		let buffers = reader
-			.read_boxed_array::<_, VertexInfoError>(buffer_count as _, |reader, index| {
-				let (size, access_flags) = reader.scope::<_, VertexInfoError>(buffer_sizes, |reader| {
-					reader.seek_rel(index as isize * 0x10)?;
-					Ok((reader.read_u32()?, reader.read_u32()?))
-				})?;
-				let stride = reader.scope(buffer_stride, |reader| {
-					reader.seek_rel(index as isize * 0x10)?;
-					reader.read_u32()
-				})?;
+		let buffers = reader.read_vec::<_, VertexInfoError>(buffer_count as _, |reader, index| {
+			let (size, access_flags) = reader.scope::<_, VertexInfoError>(buffer_sizes, |reader| {
+				reader.seek_rel(index as isize * 0x10)?;
+				Ok((reader.read_u32()?, reader.read_u32()?))
+			})?;
+			let stride = reader.scope(buffer_stride, |reader| {
+				reader.seek_rel(index as isize * 0x10)?;
+				reader.read_u32()
+			})?;
 
-				let data = buffer_offset
-					.checked_add(size as usize)
-					.and_then(|end| memory_pool.get(buffer_offset..end))
-					.map(<[_]>::to_vec)
-					.ok_or(VertexInfoError::VertexBufferOutsideOfMemoryPool)?;
+			let data = buffer_offset
+				.checked_add(size as usize)
+				.and_then(|end| memory_pool.get(buffer_offset..end))
+				.map(<[_]>::to_vec)
+				.ok_or(VertexInfoError::VertexBufferOutsideOfMemoryPool)?;
 
-				buffer_offset += size as usize;
+			buffer_offset += size as usize;
 
-				Ok(VertexBuffer {
-					stride,
-					access_flags,
-					data,
-				})
-			})?
-			.into_vec();
+			Ok(VertexBuffer {
+				stride,
+				access_flags,
+				data,
+			})
+		})?;
 
 		Ok(VertexInfo {
 			attributes: attributes,
@@ -758,7 +1120,6 @@ impl ModelArchive {
 		reader.seek_rel(12)?;
 		let name_offset = reader.read_u64()? as _;
 		let name = read_string_at(reader, name_offset)?;
-
 		ensure!(name == dict_name, MismatchedNameShapeSnafu);
 
 		let vertex_info_offset = reader.read_u64()? as usize;
@@ -769,14 +1130,14 @@ impl ModelArchive {
 		let skinning_bone_array = reader.read_u64()? as usize;
 		let key_shape_array = reader.read_u64()? as usize;
 		let key_shape_dictionary = reader.read_u64()? as usize;
-		let bounding_box_array = reader.read_u64()? as usize;
-		let bounding_sphere_array = reader.read_u64()? as usize;
+		let _bounding_box_array = reader.read_u64()? as usize;
+		let _bounding_sphere_array = reader.read_u64()? as usize;
 		let _user_data_array = reader.read_u64()? as usize;
 		let flags = ShapeFlags::from_bits(reader.read_u32()?);
 		let _ = reader.read_u16()?;
 		let material_index = reader.read_u16()? as usize;
 		let base_bone_index = reader.read_u16()?;
-		let vertex_index = reader.read_u16()? as usize;
+		let _vertex_index = reader.read_u16()? as usize;
 		let skin_bone_index_count = reader.read_u16()? as usize;
 		let vertex_skin_weight_count = reader.read_u8()? as usize;
 		let mesh_count = reader.read_u8()? as usize;
@@ -788,17 +1149,25 @@ impl ModelArchive {
 			.context(MaterialNotFoundSnafu)?;
 		reader.seek_rel(6)?;
 		let meshes = reader.scope(mesh_array_offset, |reader| {
-			reader
-				.read_boxed_array(mesh_count as usize, |reader, _| {
-					Self::read_mesh(reader, memory_pool)
-				})
-				.map(<[_]>::into_vec)
+			reader.read_vec(mesh_count as usize, |reader, _| {
+				Self::read_mesh(reader, memory_pool)
+			})
 		})?;
-		// let meshes = vec![];
+		let key_shapes = read_dict(
+			reader,
+			key_shape_array,
+			key_shape_dictionary,
+			|reader, _, _| -> Result<_, util::Error> {
+				let target_attributes = reader.read_bytes::<18>()?;
+				reader.seek_rel(2)?;
+				Ok(KeyShape { target_attributes })
+			},
+		)?;
 
 		Ok(Shape {
 			vertex_info,
 			meshes,
+			key_shapes,
 			flags,
 			material,
 			base_bone_index,
@@ -837,13 +1206,11 @@ impl ModelArchive {
 			},
 		)?;
 		let sub_meshes = reader.scope(sub_mesh_offset, |reader| {
-			reader
-				.read_boxed_array(sub_mesh_count, |reader, _| -> Result<_, ShapeError> {
-					let offset = reader.read_u32()?;
-					let size = reader.read_u32()?;
-					Ok(offset..offset + size)
-				})
-				.map(<[_]>::into_vec)
+			reader.read_vec(sub_mesh_count, |reader, _| -> Result<_, ShapeError> {
+				let offset = reader.read_u32()?;
+				let size = reader.read_u32()?;
+				Ok(offset..offset + size)
+			})
 		})?;
 
 		Ok(Mesh {
@@ -854,7 +1221,7 @@ impl ModelArchive {
 		})
 	}
 
-	pub fn read_material(reader: &mut BinaryReader) -> Result<Material, MaterialError> {
+	fn read_material(reader: &mut BinaryReader) -> Result<Material, MaterialError> {
 		let magic = reader.read_bytes::<4>()?;
 		ensure!(magic == *b"FMAT", IncorrectMaterialMagicSnafu);
 		reader.seek_rel(12)?;
@@ -865,12 +1232,12 @@ impl ModelArchive {
 		let shader_assign = reader.read_u64()? as usize;
 		let (_texture_array, texture_name_array) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
-		let sampler_array_maybe = reader.read_u64()?;
+		let _runtime_sampler_array = reader.read_u64()?;
 		let (sampler_array, sampler_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
 		let (shader_param_array, shader_param_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
-		let source_param_data_array = reader.read_u64()?;
+		let source_param_data_array = reader.read_u64()? as usize;
 		let (_user_data_array, _user_data_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
 		let volatile_flag_array = reader.read_u64()?;
@@ -878,14 +1245,14 @@ impl ModelArchive {
 		let sampler_slot_array = reader.read_u64()? as usize;
 		let texture_slot_array = reader.read_u64()? as usize;
 		let flags = reader.read_u32()?;
-		let index = reader.read_u16()?;
-		let render_info_count = reader.read_u16()?;
+		let _index = reader.read_u16()?;
+		let _render_info_count = reader.read_u16()?;
 		let texture_count = reader.read_u8()? as usize;
-		let sampler_count = reader.read_u8()?;
-		let shader_param_count = reader.read_u16()?;
+		let sampler_count = reader.read_u8()? as usize;
+		let _shader_param_count = reader.read_u16()?;
 		let shader_param_volatile_count = reader.read_u16()?;
-		let source_param_count = reader.read_u16()?;
-		let raw_param_size = reader.read_u16()?;
+		let _source_param_count = reader.read_u16()?;
+		let _raw_param_size = reader.read_u16()?;
 		let _user_data_count = reader.read_u16()?;
 		reader.seek_rel(4)?;
 
@@ -905,42 +1272,55 @@ impl ModelArchive {
 				reader.seek_rel(5)?;
 
 				reader.scope(data_offset, |reader| {
-					let array =
-						match data_type {
-							0 => reader
-								.read_boxed_array(count, |reader, _| reader.read_i32().map(RenderValue::I32))?,
-							1 => reader
-								.read_boxed_array(count, |reader, _| reader.read_f32().map(RenderValue::F32))?,
-							2 => reader.read_boxed_array(count, |reader, _| {
-								let offset = reader.read_u64()? as usize;
-								read_owned_string_at(reader, offset).map(RenderValue::String)
-							})?,
-							_ => return Err(RenderInfoError::InvalidRenderDataType),
-						};
-					Ok(array.into_vec())
+					Ok(match data_type {
+						0 => reader.read_vec(count, |reader, _| reader.read_i32().map(RenderValue::I32))?,
+						1 => reader.read_vec(count, |reader, _| reader.read_f32().map(RenderValue::F32))?,
+						2 => reader.read_vec(count, |reader, _| {
+							let offset = reader.read_u64()? as usize;
+							read_owned_string_at(reader, offset).map(RenderValue::String)
+						})?,
+						_ => return Err(RenderInfoError::InvalidRenderDataType),
+					})
 				})
 			},
 		)?;
 
-		let shader_assign = reader.scope(shader_assign, Self::read_shader_assign)?;
+		let shader_assign = (shader_assign != 0)
+			.then(|| reader.scope(shader_assign, Self::read_shader_assign))
+			.transpose()?;
 
 		let texture_names = reader.scope(texture_name_array, |reader| {
-			reader
-				.read_boxed_array(texture_count, |reader, _| {
-					let offset = reader.read_u64()? as usize;
-					read_owned_string_at(reader, offset)
-				})
-				.map(<[_]>::into_vec)
+			reader.read_vec(texture_count, |reader, _| {
+				let offset = reader.read_u64()? as usize;
+				read_owned_string_at(reader, offset)
+			})
 		})?;
-		println!("tex ptrs {texture_names:?}");
+		let samplers = read_dict(reader, sampler_array, sampler_dictionary, |reader, _, _| {
+			Self::read_sampler(reader)
+		})
+		.context(SamplerMaterialSnafu)?;
+		let shader_params = read_dict(
+			reader,
+			shader_param_array,
+			shader_param_dictionary,
+			|reader, dict_name, _| Self::read_shader_param(reader, dict_name, source_param_data_array),
+		)?;
+		let texture_slots = reader.scope(texture_slot_array, |reader| {
+			reader.read_vec(texture_count, |reader, _| reader.read_i64())
+		})?;
+		let sampler_slots = reader.scope(sampler_slot_array, |reader| {
+			reader.read_vec(sampler_count, |reader, _| reader.read_i64())
+		})?;
 
 		Ok(Material {
 			name,
 			render_info,
 			shader_assign,
 			texture_names,
-			samplers: Dict::new(),
-			shader_params: Dict::new(),
+			samplers,
+			shader_params,
+			texture_slots,
+			sampler_slots,
 		})
 	}
 
@@ -974,7 +1354,7 @@ impl ModelArchive {
 			let offset = reader.read_u64()? as usize;
 			read_owned_string_at(reader, offset)
 		})
-		.context(SamplerSnafu)?;
+		.context(SamplerShaderSnafu)?;
 		let shader_options = read_dict(reader, options_array, options_dictionary, |reader, _, _| {
 			let offset = reader.read_u64()? as usize;
 			read_owned_string_at(reader, offset)
@@ -990,9 +1370,130 @@ impl ModelArchive {
 			revision,
 		})
 	}
+
+	fn read_sampler(reader: &mut BinaryReader) -> Result<Sampler, SamplerError> {
+		let wrap_modes: [WrapMode; 3] = reader
+			.read_array(|reader, _| WrapMode::from_u8(reader.read_u8()?).context(InvalidWrapModeSnafu))?;
+		let compare_op = CompareOp::from_u8(reader.read_u8()?).context(InvalidCompareOpSnafu)?;
+		let border_color = BorderColor::from_u8(reader.read_u8()?).context(InvalidBorderColorSnafu)?;
+		let anisotropic_level = reader.read_u8()?;
+		let filter_flags = reader.read_u16()?;
+		let min_lod = reader.read_f32()?;
+		let max_lod = reader.read_f32()?;
+		let lod_bias = reader.read_f32()?;
+		reader.seek_rel(12)?;
+
+		Ok(Sampler {
+			wrap_modes,
+			compare_op,
+			border_color,
+			anisotropic_level,
+			filter_flags,
+			min_lod,
+			max_lod,
+			lod_bias,
+		})
+	}
+
+	fn read_shader_param(
+		reader: &mut BinaryReader,
+		dict_name: &str,
+		data_start: usize,
+	) -> Result<ShaderParam, ShaderParamError> {
+		let _callback_ptr = reader.read_u64()?;
+		let name_offset = reader.read_u64()? as _;
+		let name = read_string_at(reader, name_offset)?;
+		ensure!(name == dict_name, MismatchedNameShaderParamSnafu);
+		let param_type = ParamType::from_u8(reader.read_u8()?).context(InvalidParamTypeSnafu)?;
+		let _data_size = reader.read_u8()? as usize;
+		let data_offset = reader.read_u16()? as usize;
+		let uniform_offset = reader.read_i32()?;
+		let depended_index = reader.read_u16()?;
+		let depend_index = reader.read_u16()?;
+		reader.seek_rel(4)?;
+
+		// fn until<const N: usize>(
+		// 	index: usize,
+		// 	func: impl FnOnce() -> Result<f32, util::Error>,
+		// ) -> Result<f32, util::Error> {
+		// 	if index >= N { Ok(0.0) } else { func() }
+		// }
+
+		let value = reader.scope(
+			data_start + data_offset,
+			|reader| -> Result<_, ShaderParamError> {
+				Ok(match param_type {
+					ParamType::Bool => ParamValue::Bool(reader.read_bool()?),
+					ParamType::BVec2 => ParamValue::BVec2(BVec2::from_array(
+						reader.read_array(|reader, _| reader.read_bool())?,
+					)),
+					ParamType::BVec3 => ParamValue::BVec3(BVec3::from_array(
+						reader.read_array(|reader, _| reader.read_bool())?,
+					)),
+					ParamType::BVec4 => ParamValue::BVec4(BVec4::from_array(
+						reader.read_array(|reader, _| reader.read_bool())?,
+					)),
+					ParamType::I32 => ParamValue::I32(reader.read_i32()?),
+					ParamType::IVec2 => ParamValue::IVec2(reader.read_ivec2()?),
+					ParamType::IVec3 => ParamValue::IVec3(reader.read_ivec3()?),
+					ParamType::IVec4 => ParamValue::IVec4(reader.read_ivec4()?),
+					ParamType::U32 => ParamValue::U32(reader.read_u32()?),
+					ParamType::UVec2 => ParamValue::UVec2(reader.read_uvec2()?),
+					ParamType::UVec3 => ParamValue::UVec3(reader.read_uvec3()?),
+					ParamType::UVec4 => ParamValue::UVec4(reader.read_uvec4()?),
+					ParamType::F32 => ParamValue::F32(reader.read_f32()?),
+					ParamType::Vec2 => ParamValue::Vec2(reader.read_vec2()?),
+					ParamType::Vec3 => ParamValue::Vec3(reader.read_vec3()?),
+					ParamType::Vec4 => ParamValue::Vec4(reader.read_vec4()?),
+					ParamType::Mat2 => ParamValue::Mat2(
+						Mat2::from_cols_array(&reader.read_array(|reader, _| reader.read_f32())?).transpose(),
+					),
+					ParamType::Mat2x3 => todo!(),
+					ParamType::Mat2x4 => todo!(),
+					ParamType::Mat3x2 => todo!(),
+					ParamType::Mat3 => ParamValue::Mat3(
+						Mat3::from_cols_array(&reader.read_array(|reader, _| reader.read_f32())?).transpose(),
+					),
+					ParamType::Mat3x4 => todo!(),
+					ParamType::Mat4x2 => todo!(),
+					ParamType::Mat4x3 => todo!(),
+					ParamType::Mat4 => ParamValue::Mat4(
+						Mat4::from_cols_array(&reader.read_array(|reader, _| reader.read_f32())?).transpose(),
+					),
+					ParamType::Srt2D => ParamValue::Srt2D {
+						scale: reader.read_vec2()?,
+						rotation: reader.read_f32()?,
+						translation: reader.read_vec2()?,
+					},
+					ParamType::Srt3D => ParamValue::Srt3D {
+						scale: reader.read_vec3()?,
+						rotation: reader.read_vec3()?,
+						translation: reader.read_vec3()?,
+					},
+					ParamType::TexSrt => {
+						let mode =
+							TextureSrtMode::from_u32(reader.read_u32()?).context(InvalidTextureSrtModeSnafu)?;
+						ParamValue::TextureSrt {
+							mode,
+							scale: reader.read_vec2()?,
+							rotation: reader.read_f32()?,
+							translation: reader.read_vec2()?,
+						}
+					}
+				})
+			},
+		)?;
+
+		Ok(ShaderParam {
+			uniform_offset,
+			depended_index,
+			depend_index,
+			value,
+		})
+	}
 }
 
-pub fn read_dict<'a, T: 'a, E: snafu::Error + From<util::Error>>(
+pub fn read_dict<'a, T: 'a, E: snafu::Error + snafu::ErrorCompat + From<util::Error>>(
 	reader: &mut BinaryReader<'a>,
 	value_list: usize,
 	dictionary_list: usize,

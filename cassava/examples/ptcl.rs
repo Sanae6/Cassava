@@ -1,11 +1,17 @@
+#![feature(error_generic_member_access)] // for snafu backtrace
 use std::{fs, path::PathBuf};
 
 use cassava::{
-	nw::ptcl::{self, EffectArchive},
+	nw::{
+		bfres,
+		ptcl::{self, EffectArchive},
+		res_dict::DictError,
+	},
 	util::{BinaryReader, ByteOrder},
 };
 
 use clap::{Parser, Subcommand};
+use snafu::{ErrorCompat, Report};
 
 #[derive(Parser)]
 #[command(about)]
@@ -26,7 +32,39 @@ fn main() -> Result<(), ptcl::Error> {
 		Commands::Dump { in_path } => {
 			let file = fs::read(in_path).unwrap();
 			let effect_archive = EffectArchive::read(&mut BinaryReader::new(&file, ByteOrder::Little));
-			println!("{effect_archive:#?}")
+			match effect_archive {
+				Ok(effect_archive) => {
+					// println!("{effect_archive:#?}")
+				}
+				Err(error) => {
+					println!("{error}");
+					let backtrace = error.backtrace().unwrap();
+					println!("{backtrace}");
+					// let ptcl::Error::ModelArchiveError { source: error } = error else {
+					// 	unreachable!()
+					// };
+					// let backtrace = error.backtrace();
+					// println!("{backtrace:?}");
+					// let bfres::Error::ModelError { source: error } = error else {
+					// 	unreachable!()
+					// };
+					// let backtrace = error.backtrace();
+					// println!("{backtrace:?}");
+					// let DictError::ElementError {
+					// 	source: bfres::ModelError::MaterialError { source: error },
+					// } = error
+					// else {
+					// 	unreachable!()
+					// };
+					// let backtrace = error.backtrace();
+					// println!("{backtrace:?}");
+					// let bfres::MaterialError::ShaderAssignError { source: error } = error else {
+					// 	unreachable!()
+					// };
+					// let backtrace = error.backtrace();
+					// println!("{backtrace:?}");
+				}
+			}
 		}
 	}
 	Ok(())

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::Infallible, hint::unreachable_unchecked};
+use std::{collections::HashMap, convert::Infallible};
 
 use snafu::{OptionExt, Snafu};
 
@@ -9,7 +9,7 @@ fn never_convert<E>(_: Infallible) -> E {
 }
 #[derive(Snafu, Debug)]
 #[snafu(visibility)]
-pub enum DictError<E: snafu::Error + 'static> {
+pub enum DictError<E: snafu::Error + snafu::ErrorCompat + 'static> {
 	#[snafu(transparent)]
 	ReadError {
 		source: util::Error,
@@ -18,6 +18,7 @@ pub enum DictError<E: snafu::Error + 'static> {
 	#[snafu(transparent)]
 	ElementError {
 		#[snafu(source(from(Infallible, never_convert)))]
+		#[snafu(backtrace)]
 		source: E,
 	},
 	#[snafu(display("tried to seek past EOF"))]
@@ -29,7 +30,7 @@ pub enum DictError<E: snafu::Error + 'static> {
 
 pub type Dict<T> = HashMap<String, T>;
 
-pub fn read_dict<'a, T: 'a, E: snafu::Error + From<util::Error>>(
+pub fn read_dict<'a, T: 'a, E: snafu::Error + snafu::ErrorCompat + From<util::Error>>(
 	reader: &mut BinaryReader<'a>,
 	dict_magic: [u8; 4],
 	value_list: usize,

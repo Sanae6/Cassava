@@ -31,9 +31,9 @@ fn main() -> Result<(), bntx::Error> {
 			for (name, texture) in texture_archive.textures {
 				println!(
 					"{:?} {:?} {} {}",
-					name, texture.gfx.image_format, texture.gfx.width, texture.gfx.height
+					name, texture.gfx.image_format(), texture.gfx.width, texture.gfx.height
 				);
-				match texture.gfx.image_format {
+				match texture.gfx.image_format() {
 					(ChannelFormat::BC4, TypeFormat::Unorm) => {
 						let mut output = vec![0u8; (texture.gfx.width * texture.gfx.height) as usize];
 						bc4::decode_unorm(

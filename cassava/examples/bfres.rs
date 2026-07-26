@@ -1,4 +1,3 @@
-use bitfield_struct::bitfield;
 use bytemuck::cast_slice;
 use cassava::{
 	nw::{
@@ -8,12 +7,11 @@ use cassava::{
 	texture::{bc1, bc3, bc4, bc5},
 	util::{BinaryReader, ByteOrder},
 };
-use glam::{Vec3, Vec4};
+use glam::Vec3;
 use gltf::Semantic;
 use gltf_json::{
 	Asset,
 	accessor::{self, ComponentType, Type},
-	buffer::Stride,
 	extras::Void,
 	validation::Checked,
 };
@@ -351,9 +349,9 @@ fn save_texture(out_dir: &Path, name: &str, texture: &TextureInfo) -> PathBuf {
 	fs::create_dir_all(out_dir.join("textures")).unwrap();
 	println!(
 		"{:?} {:?} {} {}",
-		name, texture.gfx.image_format, texture.gfx.width, texture.gfx.height
+		name, texture.gfx.image_format(), texture.gfx.width, texture.gfx.height
 	);
-	match texture.gfx.image_format {
+	match texture.gfx.image_format() {
 		(ChannelFormat::BC4, TypeFormat::Unorm) => {
 			let mut output = vec![0u8; (texture.gfx.width * texture.gfx.height) as usize];
 			bc4::decode_unorm(
