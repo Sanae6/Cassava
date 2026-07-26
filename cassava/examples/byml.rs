@@ -1,10 +1,10 @@
 use std::{fs, path::PathBuf};
 
-use clap::{Parser, Subcommand};
-use mizuna::{
+use cassava::{
 	byaml::{self, Byml, Container, Element},
 	util::{BinaryReader, ByteOrder},
 };
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(about)]
@@ -48,9 +48,9 @@ fn main() -> Result<(), byaml::Error> {
 		Commands::Rewrite { in_path, out_path } => {
 			let file = fs::read(in_path).unwrap();
 			let byml = Byml::read(&mut BinaryReader::new(&file, ByteOrder::Little))?;
-      let file = byml.write().unwrap();
-      fs::write(out_path, file).unwrap();
-    }
+			let file = byml.write().unwrap();
+			fs::write(out_path, file).unwrap();
+		}
 	}
 	Ok(())
 }

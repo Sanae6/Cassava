@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 // use eyre::Result;
-use mizuna::sarc::{self, Reader, Writer};
-use mizuna::util::{self, ByteOrder};
+use cassava::sarc::{self, Reader, Writer};
+use cassava::util::{self, ByteOrder};
 use std::fs;
 use std::path::PathBuf;
 
@@ -61,7 +61,7 @@ fn main() -> Result<(), sarc::Error> {
 			}
 
 			if alignment.count_ones() != 1 {
-				return Err(mizuna::sarc::Error::ReadError {
+				return Err(cassava::sarc::Error::ReadError {
 					source: util::Error::InvalidAlignment,
 				});
 			}

@@ -1,6 +1,6 @@
 use std::{env::args, fs, path::Path};
 
-use mizuna::{sarc, yaz0};
+use cassava::{sarc, yaz0};
 
 fn main() {
 	let location = args().nth(1).unwrap();

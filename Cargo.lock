@@ -754,9 +754,32 @@ dependencies = [
 name = "cassava"
 version = "0.1.0"
 dependencies = [
+ "bitfield-struct",
+ "bytemuck",
+ "byteordered",
+ "clap",
+ "ddsfile",
+ "glam",
+ "gltf",
+ "gltf-json",
+ "image",
+ "num-derive",
+ "num-traits",
+ "ordered-float",
+ "pathdiff",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tegra_swizzle",
+]
+
+[[package]]
+name = "cassava-editor"
+version = "0.1.0"
+dependencies = [
+ "cassava",
  "eframe",
  "egui_dock",
- "mizuna",
 ]
 
 [[package]]
@@ -2275,29 +2298,6 @@ checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
  "simd-adler32",
-]
-
-[[package]]
-name = "mizuna"
-version = "0.1.0"
-dependencies = [
- "bitfield-struct",
- "bytemuck",
- "byteordered",
- "clap",
- "ddsfile",
- "glam",
- "gltf",
- "gltf-json",
- "image",
- "num-derive",
- "num-traits",
- "ordered-float",
- "pathdiff",
- "serde",
- "serde_json",
- "snafu",
- "tegra_swizzle",
 ]
 
 [[package]]

@@ -1,5 +1,13 @@
 use bitfield_struct::bitfield;
 use bytemuck::cast_slice;
+use cassava::{
+	nw::{
+		bfres::{self, ModelArchive, VertexAttribFormat},
+		bntx::{ChannelFormat, TextureArchive, TextureInfo, TypeFormat},
+	},
+	texture::{bc1, bc3, bc4, bc5},
+	util::{BinaryReader, ByteOrder},
+};
 use glam::{Vec3, Vec4};
 use gltf::Semantic;
 use gltf_json::{
@@ -10,14 +18,6 @@ use gltf_json::{
 	validation::Checked,
 };
 use image::{RgbImage, RgbaImage};
-use mizuna::{
-	nw::{
-		bfres::{self, ModelArchive, VertexAttribFormat},
-		bntx::{ChannelFormat, TextureArchive, TextureInfo, TypeFormat},
-	},
-	texture::{bc1, bc3, bc4, bc5},
-	util::{BinaryReader, ByteOrder},
-};
 use serde_json::Number;
 use std::{
 	collections::{BTreeMap, HashMap},

@@ -1,9 +1,9 @@
 [package]
-name = "cassava"
+name = "cassava-editor"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 eframe = { version = "0.34.2", features = ["wgpu"] }
 egui_dock = "0.19.1"
-mizuna = { path = "../mizuna", version = "0.1.0" }
+cassava = { path = "../cassava", version = "0.1.0" }

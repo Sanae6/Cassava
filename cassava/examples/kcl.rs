@@ -9,7 +9,7 @@ use gltf_json::{
 	mesh::Primitive,
 	validation::Checked,
 };
-use mizuna::kcl::{self, Kcl, ModelOctree, PrismOctree};
+use cassava::kcl::{self, Kcl, ModelOctree, PrismOctree};
 
 #[derive(Parser)]
 #[command(about)]

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use image::GrayImage;
-use mizuna::texture::bc4;
+use cassava::texture::bc4;
 
 #[derive(Parser)]
 #[command(about)]

@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use image::{RgbImage, RgbaImage};
-use mizuna::{
+use cassava::{
 	nw::bntx::{self, ChannelFormat, TextureArchive, TypeFormat},
 	texture::{bc1, bc3, bc4, bc5},
 	util::{BinaryReader, ByteOrder},
