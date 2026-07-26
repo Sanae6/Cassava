@@ -186,7 +186,7 @@ pub struct GpuAccessFlags {
 	pub uniform_buffer: bool,
 	pub texture: bool,
 	pub storage_buffer: bool,
-	pub render_target_colour: bool,
+	pub render_target_color: bool,
 	pub render_target_depth: bool,
 	pub indirect_draw: bool,
 	pub display_texture: bool,

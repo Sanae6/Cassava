@@ -1,6 +1,6 @@
 use bytemuck::Zeroable;
 
-use crate::texture::bcn::{bc3_colour_table_4, channel_table_8_unorm};
+use crate::texture::bcn::{bc3_color_table_4, channel_table_8_unorm};
 
 #[derive(bytemuck::Pod, Clone, Copy, Zeroable)]
 #[repr(C)]
@@ -8,9 +8,9 @@ struct Block {
 	alpha_0: u8,
 	alpha_1: u8,
 	alpha_indices: [u8; 6],
-	colour_0: [u8; 2],
-	colour_1: [u8; 2],
-	colour_indices: [u8; 4],
+	color_0: [u8; 2],
+	color_1: [u8; 2],
+	color_indices: [u8; 4],
 }
 
 pub fn decode_rgb(input: &[[u8; 16]], output: &mut [[u8; 4]], width: usize, height: usize) {
@@ -23,16 +23,16 @@ pub fn decode_rgb(input: &[[u8; 16]], output: &mut [[u8; 4]], width: usize, heig
 			let alpha_indices =
 				std::array::from_fn(|byte| texel.alpha_indices.get(byte).cloned().unwrap_or(0));
 			let mut alpha_indices = u64::from_le_bytes(alpha_indices);
-			let colours = bc3_colour_table_4(texel.colour_0, texel.colour_1);
-			let mut colour_indices = u32::from_le_bytes(texel.colour_indices);
+			let colors = bc3_color_table_4(texel.color_0, texel.color_1);
+			let mut color_indices = u32::from_le_bytes(texel.color_indices);
 			for y in 0..4 {
 				for x in 0..4 {
-					let colours = colours[(colour_indices & 0b11) as usize];
-					output[width * (by * 4 + y) + (bx * 4 + x)][0] = colours[0];
-					output[width * (by * 4 + y) + (bx * 4 + x)][1] = colours[1];
-					output[width * (by * 4 + y) + (bx * 4 + x)][2] = colours[2];
+					let colors = colors[(color_indices & 0b11) as usize];
+					output[width * (by * 4 + y) + (bx * 4 + x)][0] = colors[0];
+					output[width * (by * 4 + y) + (bx * 4 + x)][1] = colors[1];
+					output[width * (by * 4 + y) + (bx * 4 + x)][2] = colors[2];
 					output[width * (by * 4 + y) + (bx * 4 + x)][3] = alpha[(alpha_indices & 0b111) as usize];
-					colour_indices >>= 2;
+					color_indices >>= 2;
 					alpha_indices >>= 3;
 				}
 			}

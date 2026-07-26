@@ -18,12 +18,12 @@ pub fn decode_unorm(input: &[[u8; 8]], output: &mut [u8], width: usize, height: 
 	for by in 0..block_height {
 		for bx in 0..block_width {
 			let texel: BlockUnorm = bytemuck::cast(input[block_width * by + bx]);
-			let colours = channel_table_8_unorm(texel.red_0, texel.red_1);
+			let colors = channel_table_8_unorm(texel.red_0, texel.red_1);
 			let indices = std::array::from_fn(|byte| texel.indices.get(byte).cloned().unwrap_or(0));
 			let mut indices = u64::from_le_bytes(indices);
 			for y in 0..4 {
 				for x in 0..4 {
-					output[width * (by * 4 + y) + (bx * 4 + x)] = colours[(indices & 0b111) as usize];
+					output[width * (by * 4 + y) + (bx * 4 + x)] = colors[(indices & 0b111) as usize];
 					indices >>= 3;
 				}
 			}
@@ -44,12 +44,12 @@ pub fn decode_snorm(input: &[[u8; 8]], output: &mut [i8], width: usize, height: 
 	for by in 0..block_height {
 		for bx in 0..block_width {
 			let texel: BlockSnorm = bytemuck::cast(input[block_width * by + bx]);
-			let colours = channel_table_8_snorm(texel.red_0, texel.red_1);
+			let colors = channel_table_8_snorm(texel.red_0, texel.red_1);
 			let indices = std::array::from_fn(|byte| texel.indices.get(byte).cloned().unwrap_or(0));
 			let mut indices = u64::from_le_bytes(indices);
 			for y in 0..4 {
 				for x in 0..4 {
-					output[width * (by * 4 + y) + (bx * 4 + x)] = colours[(indices & 0b111) as usize];
+					output[width * (by * 4 + y) + (bx * 4 + x)] = colors[(indices & 0b111) as usize];
 					indices >>= 3;
 				}
 			}

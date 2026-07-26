@@ -67,20 +67,20 @@ impl Rgb565 {
 	}
 }
 
-pub fn bc3_colour_table_4(colour_0: [u8; 2], colour_1: [u8; 2]) -> [[u8; 3]; 4] {
-	if u16::from_le_bytes(colour_0) <= u16::from_le_bytes(colour_1) {
-		colour_table_4(colour_1, colour_0)
+pub fn bc3_color_table_4(color_0: [u8; 2], color_1: [u8; 2]) -> [[u8; 3]; 4] {
+	if u16::from_le_bytes(color_0) <= u16::from_le_bytes(color_1) {
+		color_table_4(color_1, color_0)
 	} else {
-		colour_table_4(colour_0, colour_1)
+		color_table_4(color_0, color_1)
 	}
 }
 
-pub fn colour_table_4(colour_0: [u8; 2], colour_1: [u8; 2]) -> [[u8; 3]; 4] {
-	let colour_0 = u16::from_le_bytes(colour_0);
-	let colour_1 = u16::from_le_bytes(colour_1);
-	let comp_0 = Rgb565::from_bits(colour_0).components();
-	let comp_1 = Rgb565::from_bits(colour_1).components();
-	if colour_0 > colour_1 {
+pub fn color_table_4(color_0: [u8; 2], color_1: [u8; 2]) -> [[u8; 3]; 4] {
+	let color_0 = u16::from_le_bytes(color_0);
+	let color_1 = u16::from_le_bytes(color_1);
+	let comp_0 = Rgb565::from_bits(color_0).components();
+	let comp_1 = Rgb565::from_bits(color_1).components();
+	if color_0 > color_1 {
 		[
 			comp_0,
 			comp_1,
@@ -95,5 +95,5 @@ pub fn colour_table_4(colour_0: [u8; 2], colour_1: [u8; 2]) -> [[u8; 3]; 4] {
 			[0, 0, 0],
 		]
 	}
-	.map(|colour| colour.map(|value| value as u8))
+	.map(|color| color.map(|value| value as u8))
 }
