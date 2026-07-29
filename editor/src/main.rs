@@ -27,12 +27,13 @@ struct Cassava {
 impl Cassava {
 	fn new(ctx: &CreationContext) -> Self {
 		let dock_state = DockState::new(vec![TabType::FileTree {
-			root: FileNode::directory(
-				PathBuf::from("/home/tetra/nx/smo/100/romfs")
+			root: FileNode::new_directory(
+				PathBuf::from("/home/aubrey/Projects/modding/smo/romfs")
 					.canonicalize()
 					.expect("hardcoded path is wrong Are you Stupid"),
 			),
 		}]);
+		// let dock_state = DockState::new(vec![]);
 
 		Self {
 			state: State::new(ctx),

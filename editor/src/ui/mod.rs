@@ -25,8 +25,7 @@ impl TabType {
 pub enum FileNode {
 	Directory {
 		path: PathBuf,
-		children: Vec<FileNode>,
-		is_open: bool,
+		children: Vec<(FileNode, bool)>,
 	},
 	File {
 		name: String,
@@ -37,11 +36,10 @@ pub enum FileNode {
 }
 
 impl FileNode {
-	pub fn directory(path: PathBuf) -> Self {
+	pub fn new_directory(path: PathBuf) -> Self {
 		FileNode::Directory {
 			path,
 			children: vec![],
-			is_open: false,
 		}
 	}
 
@@ -49,7 +47,7 @@ impl FileNode {
 		let file_type = entry.file_type().expect("file type should always be valid");
 
 		if file_type.is_dir() {
-			FileNode::directory(entry.path())
+			FileNode::new_directory(entry.path())
 		} else if file_type.is_file() {
 			let name = entry
 				.file_name()
@@ -84,33 +82,20 @@ impl FileNode {
 	pub fn open(&mut self) {
 		let has_been_opened = self.has_been_opened();
 		match self {
-			FileNode::Directory {
-				path,
-				children,
-				is_open,
-			} => {
-				*is_open = true;
+			FileNode::Directory { path, children } => {
 				if !has_been_opened {
 					*children = fs::read_dir(&path)
 						.expect("path must point to directory")
-						.map(|f| FileNode::dir_entry(f.unwrap()))
+						.map(|f| (FileNode::dir_entry(f.unwrap()), false))
 						.collect();
-					children.sort_by(|a, b| match (a, b) {
-						(FileNode::Directory { .. }, FileNode::Directory { .. }) => a.name().cmp(b.name()),
+					children.sort_by(|a, b| match (&a.0, &b.0) {
+						(FileNode::Directory { .. }, FileNode::Directory { .. }) => a.0.name().cmp(b.0.name()),
 						(FileNode::Directory { .. }, _) => Ordering::Less,
 						(_, FileNode::Directory { .. }) => Ordering::Greater,
-						(_, _) => a.name().cmp(b.name()),
+						(_, _) => a.0.name().cmp(b.0.name()),
 					});
 				}
 			}
-			FileNode::Unknown { .. } => {}
-			FileNode::File { .. } => {}
-		}
-	}
-
-	pub fn close(&mut self) {
-		match self {
-			FileNode::Directory { is_open, .. } => *is_open = false,
 			FileNode::Unknown { .. } => {}
 			FileNode::File { .. } => {}
 		}
@@ -124,31 +109,30 @@ impl FileNode {
 		}
 	}
 
-	pub fn is_open(&self) -> bool {
-		match self {
-			FileNode::Directory { is_open, .. } => *is_open,
-			FileNode::Unknown { .. } => false,
-			FileNode::File { .. } => false,
-		}
-	}
-
-	pub fn show(&mut self, ui: &mut Ui) {
-		let name = self.name().to_owned();
-		let is_open = self.is_open();
+	pub fn show(&mut self, ui: &mut Ui, is_open: &mut bool) {
 		let has_been_opened = self.has_been_opened();
 		match self {
-			FileNode::Directory { children, .. } => {
-				let header = ui.collapsing(name, |ui| {
-					for child in children {
-						child.show(ui);
-					}
-				});
-				if header.header_response.clicked() && header.fully_open() {
+			FileNode::Directory { children, path, .. } => {
+				let name = path
+					.file_name()
+					.expect("path should be canonicalised")
+					.to_str()
+					.expect("path should be UTF-8 compatible");
+				let header = CollapsingHeader::new(name)
+					.open(Some(*is_open))
+					.show(ui, |ui| {
+						for (child, is_open) in children {
+							child.show(ui, is_open);
+						}
+					});
+				if header.header_response.clicked() {
+					*is_open = !*is_open;
 					self.open();
 				}
 			}
 			FileNode::File { .. } => {
 				ui.scope(|ui| {
+					let name = self.name();
 					ui.multiply_opacity(0.7);
 					let header = CollapsingHeader::new(name)
 						.icon(circle_icon)
@@ -158,12 +142,14 @@ impl FileNode {
 						});
 					if !has_been_opened {
 						if header.header_response.double_clicked() {
+							*is_open = !*is_open;
 							self.open();
 						}
 					}
 				});
 			}
 			FileNode::Unknown { .. } => {
+				let name = self.name();
 				ui.label(name);
 			}
 		}
@@ -185,7 +171,8 @@ impl State {
 	}
 
 	fn file_tree_ui(&mut self, ui: &mut Ui, root: &mut FileNode) {
-		root.show(ui);
+		root.open();
+		root.show(ui, &mut true);
 	}
 }
 

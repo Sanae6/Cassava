@@ -337,7 +337,6 @@ impl Byml {
 		writer.write_u16(self.version);
 		let Some(root_node) = &self.root_node else {
 			writer.write_bytes(&[0; 12]);
-
 			return Ok(writer.take_inner());
 		};
 		let mut tables = FirstTraversal::default();

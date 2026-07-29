@@ -35,5 +35,19 @@ offset | size | type    | description
 0x20   |      |         | end
 
 ESTA - Emitter Set Array
-  ESET - Emitter Set
-    EMTR - Emitter
+  children:
+    ESET - Emitter Set
+    children:
+      EMTR - Emitter (attributes)
+PRMA - Primitive Array
+  children:
+    PRIM - Primitive (unclear what this is yet, non g3d primitives)
+GRTF - Texture File - binary data points to bntx
+  child:
+    GTNT - Unknown
+G3PR - G3D Primtives - binary data points to bfres
+  child:
+    GRNT - Unknown
+GRSN - G3D Shaders - binary data points to bnsh
+  child:
+    GRSC - G3D Compute Shaders - binary data points to bnsh
