@@ -24,31 +24,47 @@ pub struct ALProject {
 	#[serde(skip)]
 	root: PathBuf,
 	pub stages: BTreeMap<String, DiskRef<Stage>>,
-	objects: (),
-	effects: (),
-	layouts: (),
-	event_flows: (),
-	text: (),
-	shaders: (),
-	system: (),
+	objects: BTreeMap<String, ()>,
+	effects: BTreeMap<String, String>,
+	layouts: BTreeMap<String, String>,
+	event_flows: BTreeMap<String, String>,
+	text: BTreeMap<String, String>,
+	shaders: BTreeMap<String, String>,
+	system: BTreeMap<String, String>,
 }
 
 impl ALProject {
-	pub fn create(directory: PathBuf) -> Result<Self, Whatever> {
-		fs::create_dir_all(&directory.join("stages"))
-			.whatever_context("failed to create stages directory")?;
+	const PROJECT_FILE: &str = "cassava-project.toml";
 
-		Ok(Self {
-			root: directory,
+	pub fn create(directory: &Path) -> Result<Self, Whatever> {
+		fs::create_dir_all(directory.join("stages"))
+			.with_whatever_context(|err| format!("failed to create project: {err}"))?;
+
+		let project = Self {
+			root: directory.to_owned(),
 			stages: BTreeMap::new(),
-			objects: (),
-			effects: (),
-			layouts: (),
-			event_flows: (),
-			text: (),
-			shaders: (),
-			system: (),
-		})
+			objects: BTreeMap::new(),
+			effects: BTreeMap::new(),
+			layouts: BTreeMap::new(),
+			event_flows: BTreeMap::new(),
+			text: BTreeMap::new(),
+			shaders: BTreeMap::new(),
+			system: BTreeMap::new(),
+		};
+		fs::write(
+			directory.join(Self::PROJECT_FILE),
+			toml::to_string_pretty(&project).expect("serialization failure"),
+		)
+		.with_whatever_context(|err| format!("failed to create project file: {err}"))?;
+		Ok(project)
+	}
+
+	pub fn load(directory: &Path) -> Result<ALProject, Whatever> {
+		let data = fs::read(directory.join(Self::PROJECT_FILE))
+			.with_whatever_context(|err| format!("failed to read project file: {err}"))?;
+
+		toml::from_slice(&data)
+			.with_whatever_context(|err| format!("project file could not be read as toml: {err}"))
 	}
 
 	fn save_file<T: ProjectAsset>(&self, file_ref: &DiskRef<T>) -> Result<(), Whatever> {

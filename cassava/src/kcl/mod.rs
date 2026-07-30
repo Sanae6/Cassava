@@ -244,7 +244,7 @@ impl Kcl {
 			0x00000202 => reader.set_byte_order(ByteOrder::Little),
 			0x02020000 => reader.set_byte_order(ByteOrder::Big),
 			_ => {
-				todo!("v1/big endian not supported yet")
+				todo!("v1 not supported yet")
 			}
 		};
 

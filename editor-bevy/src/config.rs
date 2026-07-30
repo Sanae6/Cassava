@@ -46,6 +46,7 @@ pub struct ConfigChanged;
 
 fn save_config(config: Res<Config>, mut event: MessageReader<ConfigChanged>) -> Result {
 	if !event.is_empty() {
+		info!("saving config");
 		event.clear();
 
 		fs::write(

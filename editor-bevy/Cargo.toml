@@ -13,3 +13,5 @@ directories = "6.0.0"
 rfd = "0.17.2"
 serde = "1.0.229"
 toml = { workspace = true }
+snafu = { workspace = true }
+egui_dock = "0.20.1"
