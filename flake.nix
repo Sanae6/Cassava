@@ -39,6 +39,10 @@
             openssl
             udev
             fontconfig
+            alsa-lib
+            vulkan-loader
+            vulkan-tools
+            libudev-zero
 
             # WINIT_UNIX_BACKEND=wayland
             wayland

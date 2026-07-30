@@ -27,7 +27,7 @@ fn main() -> Result<(), bntx::Error> {
 		Commands::Dump { in_path } => {
 			let file = fs::read(in_path).unwrap();
 			let texture_archive =
-				TextureArchive::read(&mut BinaryReader::new(&file, ByteOrder::Little)).unwrap();
+				TextureArchive::read(&mut BinaryReader::new(&file)).unwrap();
 			for (name, texture) in texture_archive.textures {
 				println!(
 					"{:?} {:?} {} {}",

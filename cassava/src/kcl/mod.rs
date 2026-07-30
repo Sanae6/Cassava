@@ -237,8 +237,7 @@ pub struct Kcl {
 }
 
 impl Kcl {
-	pub fn read(input: &[u8]) -> Result<Self, Error> {
-		let mut reader = BinaryReader::new(input, ByteOrder::Little);
+	pub fn read(reader: &mut BinaryReader) -> Result<Self, Error> {
 		let version = reader.read_u32()?;
 		println!("{version:08X}");
 		match version {
@@ -258,7 +257,7 @@ impl Kcl {
 
 		let _model_array_end = model_array_offset
 			.checked_add(model_count)
-			.filter(|end| *end <= input.len())
+			.filter(|end| *end <= reader.len())
 			.ok_or(Error::ModelArrayPastEOF)?;
 
 		dbg!(model_count);
@@ -267,14 +266,14 @@ impl Kcl {
 		let offsets = reader.read_boxed_array(model_count, |reader, _| reader.read_u32())?;
 		for (i, offset) in offsets.into_iter().enumerate() {
 			reader.seek(offset as _)?;
-			let model = KclMesh::read(&mut reader).map_err(|error| Error::Model {
+			let model = KclMesh::read(reader).map_err(|error| Error::Model {
 				source: error,
 				model_index: i,
 			})?;
 			models.push(model);
 		}
 
-		let octree = ModelOctree::start(&mut reader, model_octree_offset as usize)?;
+		let octree = ModelOctree::start(reader, model_octree_offset as usize)?;
 
 		Ok(Kcl {
 			models,

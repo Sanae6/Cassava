@@ -56,7 +56,7 @@ pub struct Reader {
 
 impl Reader {
 	pub fn new(input: Vec<u8>) -> Result<Self, Error> {
-		let mut reader = BinaryReader::new(&input, ByteOrder::Little);
+		let mut reader = BinaryReader::new(&input).with_byte_order(ByteOrder::Little);
 
 		let signature = reader.read_slice(4)?;
 		if signature != b"SARC" {

@@ -9,7 +9,7 @@ use gltf_json::{
 	mesh::Primitive,
 	validation::Checked,
 };
-use cassava::kcl::{self, Kcl, ModelOctree, PrismOctree};
+use cassava::{kcl::{self, Kcl, ModelOctree, PrismOctree}, util::BinaryReader};
 
 #[derive(Parser)]
 #[command(about)]
@@ -37,7 +37,7 @@ fn main() -> Result<(), kcl::Error> {
 				octree,
 				bounds_min,
 				bounds_max,
-			} = kcl::Kcl::read(&data)?;
+			} = kcl::Kcl::read(&mut BinaryReader::new(&data))?;
 			traverse_model(&octree, 0);
 			for model in models {
 				println!("model");
@@ -50,55 +50,55 @@ fn main() -> Result<(), kcl::Error> {
 		}
 		Commands::Model { in_path, out_path } => {
 			let data = fs::read(in_path)?;
-			let kcl = kcl::Kcl::read(&data)?;
+			let kcl = kcl::Kcl::read(&mut BinaryReader::new(&data))?;
 
 			let mut root = gltf_json::Root::default();
-			let mesh = root.push(Mesh {
-				name: Some("Octree".to_owned()),
-				primitives: [Primitive {
-					mode: Checked::Valid(Mode::Lines),
-					attributes: {
-						let mut map: BTreeMap<Checked<Semantic>, Index<Accessor>> = BTreeMap::new();
-						map.insert(
-							Checked::Valid(Semantic::Positions),
-							root.push(Accessor {
-								buffer_view: todo!(),
-								byte_offset: None,
-								count: (0u64).into(),
-								component_type: Checked::Valid(GenericComponentType(ComponentType::F32)),
-								extensions: None,
-								extras: Void::default(),
-								type_: Checked::Valid(Type::Vec3),
-								min: None,
-								max: None,
-								name: Some("Prim".to_owned()),
-								normalized: false,
-								sparse: None,
-							}),
-						);
-						map
-					},
-					extensions: None,
-					extras: Void::default(),
-					indices: None,
-					material: None,
-					targets: None,
-				}]
-				.to_vec(),
-				extensions: None,
-				extras: Void::default(),
-				weights: None,
-			});
-			let node = root.push(Node {
-				mesh: Some(mesh),
-				..Default::default()
-			});
-			root.push(Scene {
-				nodes: [node].to_vec(),
-				extensions: None,
-				extras: Void::default(),
-				name: None,
-			});
+			// let mesh = root.push(Mesh {
+			// 	name: Some("Octree".to_owned()),
+			// 	primitives: [Primitive {
+			// 		mode: Checked::Valid(Mode::Lines),
+			// 		attributes: {
+			// 			let mut map: BTreeMap<Checked<Semantic>, Index<Accessor>> = BTreeMap::new();
+			// 			map.insert(
+			// 				Checked::Valid(Semantic::Positions),
+			// 				root.push(Accessor {
+			// 					buffer_view: todo!(),
+			// 					byte_offset: None,
+			// 					count: (0u64).into(),
+			// 					component_type: Checked::Valid(GenericComponentType(ComponentType::F32)),
+			// 					extensions: None,
+			// 					extras: Void::default(),
+			// 					type_: Checked::Valid(Type::Vec3),
+			// 					min: None,
+			// 					max: None,
+			// 					name: Some("Prim".to_owned()),
+			// 					normalized: false,
+			// 					sparse: None,
+			// 				}),
+			// 			);
+			// 			map
+			// 		},
+			// 		extensions: None,
+			// 		extras: Void::default(),
+			// 		indices: None,
+			// 		material: None,
+			// 		targets: None,
+			// 	}]
+			// 	.to_vec(),
+			// 	extensions: None,
+			// 	extras: Void::default(),
+			// 	weights: None,
+			// });
+			// let node = root.push(Node {
+			// 	mesh: Some(mesh),
+			// 	..Default::default()
+			// });
+			// root.push(Scene {
+			// 	nodes: [node].to_vec(),
+			// 	extensions: None,
+			// 	extras: Void::default(),
+			// 	name: None,
+			// });
 
 			gltf_json::serialize::to_string_pretty(&root).unwrap();
 		}

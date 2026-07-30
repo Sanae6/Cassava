@@ -168,12 +168,16 @@ pub struct BinaryReader<'a> {
 }
 
 impl<'a> BinaryReader<'a> {
-	pub fn new(data: &'a [u8], byte_order: ByteOrder) -> Self {
+	pub fn new(data: &'a [u8]) -> Self {
 		Self {
-			byte_order,
+			byte_order: ByteOrder::Little,
 			cursor: 0,
 			inner: data,
 		}
+	}
+
+	pub fn with_byte_order(self, byte_order: ByteOrder) -> Self {
+		Self { byte_order, ..self }
 	}
 
 	pub fn set_byte_order(&mut self, byte_order: ByteOrder) {
@@ -320,7 +324,8 @@ impl<'a> BinaryReader<'a> {
 	) -> Result<R, E> {
 		let current = self.position();
 		self.seek(seek_to)?;
-		let mut sub_reader = BinaryReader::new(&self.inner[self.cursor..], self.byte_order);
+		let mut sub_reader =
+			BinaryReader::new(&self.inner[self.cursor..]).with_byte_order(self.byte_order);
 		let result = func(&mut sub_reader);
 		self.seek(current)?;
 		result

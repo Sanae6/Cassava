@@ -31,7 +31,7 @@ fn main() -> Result<(), ptcl::Error> {
 	match args.command {
 		Commands::Dump { in_path } => {
 			let file = fs::read(in_path).unwrap();
-			let effect_archive = EffectArchive::read(&mut BinaryReader::new(&file, ByteOrder::Little));
+			let effect_archive = EffectArchive::read(&mut BinaryReader::new(&file));
 			match effect_archive {
 				Ok(effect_archive) => {
 					// println!("{effect_archive:#?}")

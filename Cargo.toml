@@ -1,3 +1,15 @@
 [workspace]
 resolver = "3"
-members = ["cassava", "editor", "project"]
+members = [
+  "cassava",
+  # "editor",
+  "editor-bevy",
+  "project",
+]
+
+[workspace.dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+snafu = { version = "0.9.0", features = ["unstable-provider-api"] }
+glam = { version = "0.33.2", features = ["serde"] }
+toml = "1.1.4"
+tracing = "0.1.44"

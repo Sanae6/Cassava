@@ -12,7 +12,7 @@ use gltf::Semantic;
 use gltf_json::{
 	Asset,
 	accessor::{self, ComponentType, Type},
-	extras::Void,
+	extras::Extras,
 	validation::Checked,
 };
 use image::{RgbImage, RgbaImage};
@@ -43,7 +43,7 @@ fn main() -> Result<(), bfres::Error> {
 	match args.command {
 		Commands::Dump { in_path, out_dir } => {
 			let file = fs::read(in_path).unwrap();
-			let model_archive = ModelArchive::read(&mut BinaryReader::new(&file, ByteOrder::Little))?;
+			let model_archive = ModelArchive::read(&mut BinaryReader::new(&file))?;
 
 			fs::create_dir_all(&out_dir).unwrap();
 
@@ -51,7 +51,7 @@ fn main() -> Result<(), bfres::Error> {
 				fs::write(out_dir.join("textures.bntx"), texture).unwrap();
 
 				let texture =
-					TextureArchive::read(&mut BinaryReader::new(texture, ByteOrder::Little)).unwrap();
+					TextureArchive::read(&mut BinaryReader::new(texture)).unwrap();
 				texture
 					.textures
 					.iter()
@@ -133,7 +133,7 @@ fn main() -> Result<(), bfres::Error> {
 										name: None,
 										uri: Some(format!("buffers/{path}")),
 										extensions: None,
-										extras: Void::default(),
+										extras: Extras::default(),
 									});
 
 									let view = root.push(gltf_json::buffer::View {
@@ -144,7 +144,7 @@ fn main() -> Result<(), bfres::Error> {
 										name: None,
 										target: Some(Checked::Valid(gltf_json::buffer::Target::ArrayBuffer)),
 										extensions: None,
-										extras: Void::default(),
+										extras: Extras::default(),
 									});
 
 									let buffer = root.push(gltf_json::Accessor {
@@ -153,7 +153,7 @@ fn main() -> Result<(), bfres::Error> {
 										count: (vertices.len() / stride as usize).into(),
 										component_type: Checked::Valid(accessor::GenericComponentType(component_type)),
 										extensions: None,
-										extras: Void::default(),
+										extras: Extras::default(),
 										type_: Checked::Valid(type_),
 										min,
 										max,
@@ -186,7 +186,7 @@ fn main() -> Result<(), bfres::Error> {
 										name: None,
 										uri: Some(format!("buffers/{path}")),
 										extensions: None,
-										extras: Void::default(),
+										extras: Extras::default(),
 									});
 
 									let view = root.push(gltf_json::buffer::View {
@@ -199,7 +199,7 @@ fn main() -> Result<(), bfres::Error> {
 											gltf_json::buffer::Target::ElementArrayBuffer,
 										)),
 										extensions: None,
-										extras: Void::default(),
+										extras: Extras::default(),
 									});
 
 									let index_buffer = root.push(gltf_json::Accessor {
@@ -214,7 +214,7 @@ fn main() -> Result<(), bfres::Error> {
 											},
 										)),
 										extensions: None,
-										extras: Void::default(),
+										extras: Extras::default(),
 										type_: Checked::Valid(Type::Scalar),
 										min: None,
 										max: None,
@@ -226,7 +226,7 @@ fn main() -> Result<(), bfres::Error> {
 									gltf_json::mesh::Primitive {
 										attributes: attributes.clone(),
 										extensions: Default::default(),
-										extras: Void::default(),
+										extras: Extras::default(),
 										indices: Some(index_buffer),
 										material: None,
 										mode: Checked::Valid(match mesh.primitive_topology {
@@ -251,7 +251,7 @@ fn main() -> Result<(), bfres::Error> {
 
 							let mesh = root.push(gltf_json::Mesh {
 								extensions: None,
-								extras: Void::default(),
+								extras: Extras::default(),
 								name: Some(shape_name.clone()),
 								primitives: primitives,
 								weights: None,
@@ -274,7 +274,7 @@ fn main() -> Result<(), bfres::Error> {
 				name: Some(model_archive.file_name.clone()),
 				nodes: models,
 				extensions: Default::default(),
-				extras: Void::default(),
+				extras: Extras::default(),
 			});
 
 			fs::write(

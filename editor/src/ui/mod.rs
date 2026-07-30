@@ -1,3 +1,5 @@
+mod file_tree;
+
 use std::{
 	cmp::Ordering,
 	fs::{self, DirEntry},
