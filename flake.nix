@@ -33,6 +33,7 @@
               fenix.complete.rust-src
             ])
 
+            clang
             pkg-config
             libxkbcommon
             libGL

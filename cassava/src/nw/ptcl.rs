@@ -1,11 +1,8 @@
-use snafu::{OptionExt, ResultExt, Snafu, ensure};
+use snafu::{ResultExt, Snafu};
 
 use crate::{
 	nw::{
-		FileHeaderError,
-		bfres::{self, ModelArchive},
-		bntx::{self, TextureArchive},
-		read_binary_file_header,
+		BinaryFileInfo, FileHeaderError, bfres::{self, ModelArchive}, bntx::{self, TextureArchive}, read_binary_file_header
 	},
 	util::{self, BinaryReader},
 };
@@ -76,13 +73,14 @@ pub enum BlockError {
 
 #[derive(Debug)]
 pub struct EffectArchive {
-	model_archive: ModelArchive,
-	texture_archive: TextureArchive,
+	pub binary_file_info: BinaryFileInfo,
+	pub model_archive: ModelArchive,
+	pub texture_archive: TextureArchive,
 }
 
 struct BinaryData {
 	magic: [u8; 4],
-	block_size: u32,
+	_block_size: u32,
 	first_child: Option<usize>,
 	next_sibling: Option<usize>,
 	first_attribute: Option<usize>,
@@ -128,6 +126,7 @@ impl EffectArchive {
 			reader.seek(next_sibling)?;
 		}
 		Ok(EffectArchive {
+			binary_file_info: file_info,
 			model_archive: model_archive.ok_or(Error::NoModelArchive)?,
 			texture_archive: texture_archive.ok_or(Error::NoTextureArchive)?,
 		})
@@ -162,7 +161,7 @@ impl EffectArchive {
 
 		Ok(BinaryData {
 			magic,
-			block_size,
+			_block_size: block_size,
 			first_child,
 			next_sibling,
 			first_attribute,
@@ -190,7 +189,7 @@ impl EffectArchive {
 			for child in Self::iter_blocks(&reader, binary_data.first_child) {
 				let (binary_data, mut reader) = child?;
 
-				let magic_string = String::from_utf8_lossy(&binary_data.magic);
+				// let magic_string = String::from_utf8_lossy(&binary_data.magic);
 				let name = reader.scope(binary_data.data_start + 0x10, |reader| {
 					reader.read_null_terminated_string()
 				})?;
@@ -203,10 +202,10 @@ impl EffectArchive {
 					})?;
 					println!("\t\t\t{name}");
 
-					let magic_string = String::from_utf8_lossy(&binary_data.magic);
+					// let magic_string = String::from_utf8_lossy(&binary_data.magic);
 					// println!("\t\t\t{magic_string}");
 					for child in Self::iter_blocks(&reader, binary_data.first_attribute) {
-						let (binary_data, reader) = child?;
+						let (binary_data, _reader) = child?;
 
 						let magic_string = String::from_utf8_lossy(&binary_data.magic);
 						println!("\t\t\t\t{magic_string}");
@@ -242,7 +241,7 @@ impl EffectArchive {
 		reader.subfile_scope(data_start, ModelArchive::read)
 	}
 
-	fn read_shader_archive(reader: &mut BinaryReader, data_start: usize) {
+	fn read_shader_archive(_reader: &mut BinaryReader, _data_start: usize) {
 		// reader
 		// 	.subfile_scope(data_start, |reader| -> Result<(), util::Error> {
 		// 		let ex = read_binary_file_header(reader, None).unwrap();

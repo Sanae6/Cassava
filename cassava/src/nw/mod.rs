@@ -1,3 +1,4 @@
+#[allow(unused)]
 pub mod bffnt;
 pub mod bfres;
 pub mod bntx;

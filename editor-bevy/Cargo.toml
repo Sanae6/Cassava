@@ -15,3 +15,6 @@ serde = "1.0.229"
 toml = { workspace = true }
 snafu = { workspace = true }
 egui_dock = "0.20.1"
+cassava = { version = "0.1.0", path = "../cassava" }
+egui-toast = "0.21.0"
+log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }

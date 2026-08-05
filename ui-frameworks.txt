@@ -1,0 +1,31 @@
+serious contenders for ui frameworks
+
+egui
+- very immediate, entirely unstylable
+- bevy_egui is pretty nice
+- egui_dock is simple to use
+- would prefer to have a more retained ui
+bevy::feathers
+- great for what i need visually
+- no docking
+- currently seems to be quite involved to use, not interested
+gtk4
+- seriously didn't consider this until now
+- bevy_gtk exists, proving it's possible
+  - need to try that out myself, should be easy since it has a flake :3
+- rust bindings for libpanel exists, docking solution available!
+- how windows-friendly is it?
+- i guess my app is gonna look like a gnome app going forward
+- do i even want to use bevy? i should maybe be using gtk alone
+qtbridge
+- qt! it comes with so much that i want out of the box
+- qtquick only, no native apis, must use cxx-qt directly just to do that stuff :/
+  - though it seems cxx-qt integration is on the roadmap? should watch for that
+- qdockwidget provides docking, unsure if i can even use it though lol
+- really only listed here for completeness
+wry/tauri
+- lol. overwhelmingly not worth the binding efforts into javascript land.
+- not making a js app... though it might not be a terrible idea to use wry standalone
+blitz
+- only here because i wish it was a complete solution and just want to write that somewhere
+- don't currently trust it for full stack ui

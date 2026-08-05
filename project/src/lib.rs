@@ -1,17 +1,15 @@
 use std::{
-	collections::BTreeMap,
 	fmt::Debug,
 	fs,
 	path::{Path, PathBuf},
-	rc::Rc,
 };
 
-use cassava::{byaml, util::BinaryReader};
+use indexmap::IndexMap;
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
-use snafu::{OptionExt, ResultExt, Whatever, ensure_whatever, whatever};
+use snafu::{ResultExt, Whatever};
 
-use crate::{stage::Stage, util::load_szs};
+use crate::stage::Stage;
 
 pub use disk_ref::{DiskRef, ProjectAsset};
 
@@ -23,18 +21,18 @@ mod util;
 pub struct ALProject {
 	#[serde(skip)]
 	root: PathBuf,
-	pub stages: BTreeMap<String, DiskRef<Stage>>,
-	objects: BTreeMap<String, ()>,
-	effects: BTreeMap<String, String>,
-	layouts: BTreeMap<String, String>,
-	event_flows: BTreeMap<String, String>,
-	text: BTreeMap<String, String>,
-	shaders: BTreeMap<String, String>,
-	system: BTreeMap<String, String>,
+	pub stages: IndexMap<String, DiskRef<Stage>>,
+	objects: IndexMap<String, ()>,
+	effects: IndexMap<String, String>,
+	layouts: IndexMap<String, String>,
+	event_flows: IndexMap<String, String>,
+	text: IndexMap<String, String>,
+	shaders: IndexMap<String, String>,
+	system: IndexMap<String, String>,
 }
 
 impl ALProject {
-	const PROJECT_FILE: &str = "cassava-project.toml";
+	const PROJECT_FILE: &str = "cassava-project.ron";
 
 	pub fn create(directory: &Path) -> Result<Self, Whatever> {
 		fs::create_dir_all(directory.join("stages"))
@@ -42,28 +40,28 @@ impl ALProject {
 
 		let project = Self {
 			root: directory.to_owned(),
-			stages: BTreeMap::new(),
-			objects: BTreeMap::new(),
-			effects: BTreeMap::new(),
-			layouts: BTreeMap::new(),
-			event_flows: BTreeMap::new(),
-			text: BTreeMap::new(),
-			shaders: BTreeMap::new(),
-			system: BTreeMap::new(),
+			stages: IndexMap::new(),
+			objects: IndexMap::new(),
+			effects: IndexMap::new(),
+			layouts: IndexMap::new(),
+			event_flows: IndexMap::new(),
+			text: IndexMap::new(),
+			shaders: IndexMap::new(),
+			system: IndexMap::new(),
 		};
 		fs::write(
 			directory.join(Self::PROJECT_FILE),
-			toml::to_string_pretty(&project).expect("serialization failure"),
+			ron::to_string(&project).expect("serialization failure"),
 		)
 		.with_whatever_context(|err| format!("failed to create project file: {err}"))?;
 		Ok(project)
 	}
 
 	pub fn load(directory: &Path) -> Result<ALProject, Whatever> {
-		let data = fs::read(directory.join(Self::PROJECT_FILE))
+		let data = fs::read_to_string(directory.join(Self::PROJECT_FILE))
 			.with_whatever_context(|err| format!("failed to read project file: {err}"))?;
 
-		toml::from_slice(&data)
+		ron::from_str(&data)
 			.with_whatever_context(|err| format!("project file could not be read as toml: {err}"))
 	}
 

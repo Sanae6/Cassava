@@ -448,6 +448,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic_refcell"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21e4227379beff4205943696e6c3e0cd809bacdf3f0edd6e3dd153e2269571a4"
+
+[[package]]
 name = "atomicow"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2235,6 +2241,7 @@ dependencies = [
 name = "cassava"
 version = "0.1.0"
 dependencies = [
+ "atomic_refcell",
  "bitfield-struct",
  "bytemuck",
  "byteordered",
@@ -2244,6 +2251,7 @@ dependencies = [
  "gltf",
  "gltf-json",
  "image",
+ "indexmap",
  "num-derive",
  "num-traits",
  "ordered-float",
@@ -2261,9 +2269,12 @@ dependencies = [
  "bevy",
  "bevy_dylib",
  "bevy_egui",
+ "cassava",
  "cassava-project",
  "directories",
+ "egui-toast",
  "egui_dock",
+ "log",
  "rfd",
  "serde",
  "snafu",
@@ -2278,10 +2289,10 @@ dependencies = [
  "glam 0.33.2",
  "indexmap",
  "relative-path",
+ "ron",
  "serde",
  "slotmap",
  "snafu",
- "toml",
  "tracing",
 ]
 
@@ -2842,6 +2853,15 @@ dependencies = [
  "profiling",
  "smallvec",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "egui-toast"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b57beff468d083e6f5525deb0b148cfddadbd54611dbc912d918742342e769ab"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

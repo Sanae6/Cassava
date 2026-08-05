@@ -1,13 +1,12 @@
-use bevy_egui::egui::Ui;
-
-
+use bevy_egui::egui::{self, Ui};
 
 pub struct StageEditorTab {
-  // image: 
+	stage_name: String,
 }
 
 impl StageEditorTab {
-  pub fn show(ui: &mut Ui) {
-
-  }
+	pub fn title(&self) -> egui::WidgetText {
+		(&self.stage_name).into()
+	}
+	pub fn show(&mut self, ui: &mut Ui) {}
 }

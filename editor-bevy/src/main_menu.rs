@@ -214,7 +214,7 @@ fn main_ui(
 				let github_emote = egui::special_emojis::GITHUB;
 				ui.hyperlink_to(
 					format!("{github_emote} Source code"),
-					"https://github.com/Sanae6/Cassava",
+					"https://https://mkwiiki.org/wiki/YAZ0_(File_Format)?github.com/Sanae6/Cassava",
 				);
 				ui.hyperlink_to("SMO Modding Hub", "https://discord.gg/dZX7sn2mER");
 			})

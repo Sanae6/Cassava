@@ -1,6 +1,7 @@
-use std::collections::HashMap;
 use std::fs;
+use std::ops::Range;
 use std::path::PathBuf;
+use std::{collections::HashMap, path::Path};
 
 use snafu::prelude::*;
 
@@ -35,22 +36,15 @@ pub enum Error {
 	DataOffsetsOutOfOrder,
 	#[snafu(display("filename hash is incorrect"))]
 	HashMismatch,
-	#[snafu(display("file entry not found"))]
-	EntryNotFound,
-	#[snafu(display("file not found"))]
-	FileNotFound,
+	#[snafu(display("file is out of bounds"))]
+	FileOutOfBounds,
 	#[snafu(transparent)]
 	ReadError { source: crate::util::Error },
 }
 
-struct FileInfo {
-	start_offset: usize,
-	size: usize,
-}
-
 pub struct Reader {
 	archive_data: Vec<u8>,
-	files: HashMap<String, FileInfo>,
+	files: HashMap<String, Range<usize>>,
 	byte_order: ByteOrder,
 }
 
@@ -63,14 +57,7 @@ impl Reader {
 			return Err(Error::InvalidSignature { expected: "SARC" });
 		}
 
-		let header_size = reader.read_u16()?;
-		if header_size != 0x14 {
-			return Err(Error::IncorrectHeaderSize {
-				name: "SARC",
-				expected: 0x14,
-				got: header_size,
-			});
-		}
+		reader.seek_rel(2)?;
 
 		let byte_order_mark = reader.read_u16()?;
 		match byte_order_mark {
@@ -82,6 +69,17 @@ impl Reader {
 				});
 			}
 		};
+
+		reader.seek_rel(-4)?;
+		let header_size = reader.read_u16()?;
+		if header_size != 0x14 {
+			return Err(Error::IncorrectHeaderSize {
+				name: "SARC",
+				expected: 0x14,
+				got: header_size,
+			});
+		}
+		reader.seek_rel(2)?;
 
 		let file_size = reader.read_u32()? as usize;
 		if file_size != input.len() {
@@ -153,6 +151,14 @@ impl Reader {
 				let data_size = end_offset
 					.checked_sub(start_offset)
 					.ok_or(Error::DataOffsetsOutOfOrder)?;
+
+				ensure!(
+					data_offset
+						.checked_add(end_offset)
+						.is_some_and(|value| value <= input.len()),
+					FileOutOfBoundsSnafu
+				);
+
 				let _hash_collision_count = name_attrs >> 24;
 				let name_offset = (name_attrs & 0xffffff) as usize * 4;
 				reader.seek(filenames_offset + name_offset)?;
@@ -168,13 +174,10 @@ impl Reader {
 
 				Ok((
 					name,
-					FileInfo {
-						start_offset: data_offset + start_offset,
-						size: data_size,
-					},
+					(data_offset + start_offset)..(data_offset + end_offset),
 				))
 			})
-			.collect::<Result<HashMap<String, FileInfo>, Error>>()?;
+			.collect::<Result<_, Error>>()?;
 
 		Ok(Reader {
 			archive_data: input,
@@ -187,17 +190,31 @@ impl Reader {
 		self.byte_order
 	}
 
-	pub fn get_filenames(&self) -> impl Iterator<Item = &String> {
-		self.files.keys()
+	pub fn filenames(&self) -> impl Iterator<Item = &str> {
+		self.files.keys().map(|string| string.as_str())
 	}
 
-	pub fn get_file_data_by_name(&self, name: &str) -> Result<Vec<u8>, Error> {
-		let info = self.files.get(name).ok_or(Error::EntryNotFound)?;
+	pub fn files(&self) -> impl Iterator<Item = (&str, &[u8])> {
+		self.files.iter().map(|(name, range)| {
+			(
+				name.as_str(),
+				self
+					.archive_data
+					.get(range.clone())
+					.expect("file range should be in bounds"),
+			)
+		})
+	}
 
-		let start = info.start_offset;
-		let end = info.start_offset + info.size;
+	pub fn get_file(&self, name: &str) -> Option<&[u8]> {
+		let range = self.files.get(name)?;
 
-		Ok(self.archive_data[start..end].to_vec())
+		Some(
+			self
+				.archive_data
+				.get(range.clone())
+				.expect("file range should be in-bounds"),
+		)
 	}
 }
 
@@ -220,16 +237,16 @@ impl Writer {
 		}
 	}
 
-	pub fn add_file(&mut self, path: &String, data: Vec<u8>) {
+	pub fn add_file(&mut self, path: &str, data: Vec<u8>) {
 		let hash = calc_hash(path.as_bytes(), 0x65);
 		self.files.push(File {
-			path: path.clone(),
+			path: path.to_owned(),
 			data,
 			hash,
 		})
 	}
 
-	pub fn save(&mut self, out_path: &PathBuf, byte_order: ByteOrder) -> Result<(), Error> {
+	pub fn save(&mut self, out_path: &Path, byte_order: ByteOrder) -> Result<(), Error> {
 		let data = self.save_to_vec(byte_order)?;
 		fs::write(out_path, data)?;
 
@@ -239,7 +256,7 @@ impl Writer {
 	pub fn save_to_vec(&mut self, byte_order: ByteOrder) -> Result<Vec<u8>, Error> {
 		let mut writer = BinaryWriter::new(byte_order);
 		writer.write_bytes(b"SARC"); // signature
-		writer.write_bytes(&[0x14, 0x00]); // header size
+		writer.write_u16(0x14); // header size
 		writer.write_u16(0xfeff); // byte order mark
 		writer.write_u32(0); // file size
 		writer.write_u32(0); // data offset
@@ -382,9 +399,9 @@ mod tests {
 			let reader = Reader::new(contents.clone()).unwrap();
 			let mut writer = Writer::new(alignment);
 
-			for path in reader.get_filenames() {
-				let data = reader.get_file_data_by_name(path).unwrap();
-				writer.add_file(path, data);
+			for path in reader.filenames() {
+				let data = reader.get_file(path).unwrap();
+				writer.add_file(path, data.to_owned());
 			}
 
 			let out_data = writer.save_to_vec(reader.get_byte_order()).unwrap();

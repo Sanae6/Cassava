@@ -1,10 +1,12 @@
 use std::{
 	backtrace::Backtrace,
-	cell::RefCell,
-	collections::{BTreeMap, HashMap, HashSet},
-	rc::Rc,
+	collections::{HashMap, HashSet},
+	ptr,
+	sync::Arc,
 };
 
+use atomic_refcell::AtomicRefCell;
+use indexmap::IndexMap;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use ordered_float::OrderedFloat;
@@ -39,13 +41,25 @@ pub struct Byml {
 	pub root_node: Option<Container>,
 }
 
-pub type Dictionary = BTreeMap<Rc<str>, Element>;
+pub type Dictionary = IndexMap<Arc<str>, Element>;
 pub type Array = Vec<Element>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub enum Container {
-	Array(Rc<RefCell<Array>>),
-	Dictionary(Rc<RefCell<Dictionary>>),
+	Array(Arc<AtomicRefCell<Array>>),
+	Dictionary(Arc<AtomicRefCell<Dictionary>>),
+}
+
+impl PartialEq for Container {
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(Self::Array(l0), Self::Array(r0)) => ptr::eq(l0, r0) || *l0.borrow() == *r0.borrow(),
+			(Self::Dictionary(l0), Self::Dictionary(r0)) => {
+				ptr::eq(l0, r0) || *l0.borrow() == *r0.borrow()
+			}
+			_ => false,
+		}
+	}
 }
 
 impl Container {
@@ -60,6 +74,13 @@ impl Container {
 
 		(size <= 0xFFFFFF).then_some(size)
 	}
+
+	pub fn as_element(&self) -> Element {
+		match self.clone() {
+			Container::Array(value) => Element::Array(value),
+			Container::Dictionary(value) => Element::Dictionary(value),
+		}
+	}
 }
 
 impl std::hash::Hash for Container {
@@ -67,16 +88,16 @@ impl std::hash::Hash for Container {
 		core::mem::discriminant(self).hash(state);
 		match self {
 			Container::Array(array) => array.borrow().hash(state),
-			Container::Dictionary(ref_cell) => ref_cell.borrow().hash(state),
+			Container::Dictionary(ref_cell) => ref_cell.borrow().as_slice().hash(state),
 		}
 	}
 }
 
 #[derive(Debug, Clone)]
 pub enum Element {
-	Array(Rc<RefCell<Array>>),
-	Dictionary(Rc<RefCell<Dictionary>>),
-	String(Rc<str>),
+	Array(Arc<AtomicRefCell<Array>>),
+	Dictionary(Arc<AtomicRefCell<Dictionary>>),
+	String(Arc<str>),
 	Boolean(bool),
 	I32(i32),
 	F32(f32),
@@ -110,8 +131,10 @@ impl Eq for Element {}
 impl PartialEq for Element {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {
-			(Self::Array(l0), Self::Array(r0)) => l0 == r0,
-			(Self::Dictionary(l0), Self::Dictionary(r0)) => l0 == r0,
+			(Self::Array(l0), Self::Array(r0)) => ptr::eq(l0, r0) || *l0.borrow() == *r0.borrow(),
+			(Self::Dictionary(l0), Self::Dictionary(r0)) => {
+				ptr::eq(l0, r0) || *l0.borrow() == *r0.borrow()
+			}
 			(Self::String(l0), Self::String(r0)) => l0 == r0,
 			(Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
 			(Self::I32(l0), Self::I32(r0)) => l0 == r0,
@@ -130,7 +153,7 @@ impl std::hash::Hash for Element {
 		core::mem::discriminant(self).hash(state);
 		match self {
 			Element::Array(array) => array.borrow().hash(state),
-			Element::Dictionary(ref_cell) => ref_cell.borrow().hash(state),
+			Element::Dictionary(ref_cell) => ref_cell.borrow().as_slice().hash(state),
 			Element::String(value) => value.hash(state),
 			Element::Boolean(value) => value.hash(state),
 			Element::I32(value) => value.hash(state),
@@ -157,7 +180,7 @@ impl Byml {
 			return Err(Error::UnsupportedVersion);
 		}
 
-		fn read_string_table(reader: &mut BinaryReader) -> Result<Box<[Rc<str>]>, Error> {
+		fn read_string_table(reader: &mut BinaryReader) -> Result<Box<[Arc<str>]>, Error> {
 			let at = reader.read_u32()?;
 			if at == 0 {
 				// panic!();
@@ -176,13 +199,13 @@ impl Byml {
 				let offsets = reader.read_boxed_array(count + 1, |reader, _| reader.read_u32())?;
 				let strings = reader.read_boxed_array(count + 1, |reader, i| {
 					if i == count {
-						return Ok(Rc::from(""));
+						return Ok(Arc::from(""));
 					}
 					let (start, end) = (offsets[i] as usize, offsets[i + 1] as usize);
 					reader.seek(table_start + start)?;
 					reader
 						.read_string(end - start - 1)
-						.map(|str| Into::<Rc<str>>::into(str))
+						.map(|str| Into::<Arc<str>>::into(str))
 				})?;
 				Ok(strings)
 			})
@@ -230,7 +253,7 @@ impl Byml {
 	fn read_array(
 		reader: &mut BinaryReader,
 		tables: &mut ReadTables,
-	) -> Result<Rc<RefCell<Array>>, Error> {
+	) -> Result<Arc<AtomicRefCell<Array>>, Error> {
 		let start = reader.position();
 		if let Some(Container::Array(array)) = tables.found_containers.get(&start) {
 			return Ok(array.clone());
@@ -244,7 +267,7 @@ impl Byml {
 			let value = reader.read_u32()?;
 			elements.push(Self::read_element(reader, tables, data_type, value)?);
 		}
-		let elements = Rc::new(RefCell::new(elements));
+		let elements = Arc::new(AtomicRefCell::new(elements));
 		tables
 			.found_containers
 			.insert(start, Container::Array(elements.clone()));
@@ -254,7 +277,7 @@ impl Byml {
 	fn read_dictionary(
 		reader: &mut BinaryReader,
 		tables: &mut ReadTables,
-	) -> Result<Rc<RefCell<Dictionary>>, Error> {
+	) -> Result<Arc<AtomicRefCell<Dictionary>>, Error> {
 		let start = reader.position();
 		if let Some(Container::Dictionary(dict)) = tables.found_containers.get(&start) {
 			return Ok(dict.clone());
@@ -273,7 +296,7 @@ impl Byml {
 			let value = reader.read_u32()?;
 			dictionary.insert(name, Self::read_element(reader, tables, data_type, value)?);
 		}
-		let dictionary = Rc::new(RefCell::new(dictionary));
+		let dictionary = Arc::new(AtomicRefCell::new(dictionary));
 		tables
 			.found_containers
 			.insert(start, Container::Dictionary(dictionary.clone()));
@@ -342,7 +365,7 @@ impl Byml {
 		let mut tables = FirstTraversal::default();
 		Self::find_containers(root_node.clone(), &mut tables);
 
-		let string_table_size = |strings: &[Rc<str>]| -> Result<usize, WriteError> {
+		let string_table_size = |strings: &[Arc<str>]| -> Result<usize, WriteError> {
 			if strings.len() == 0 {
 				return Ok(0);
 			}
@@ -384,7 +407,7 @@ impl Byml {
 		}
 		writer.write_u32(*container_offsets.get(&root_node).unwrap() as u32);
 
-		let mut write_sorted_string_table = |offset: usize, strings: &[Rc<str>]| {
+		let mut write_sorted_string_table = |offset: usize, strings: &[Arc<str>]| {
 			writer.seek(offset);
 			writer.write_u8(DataType::StringTable as u8);
 			write_u24(&mut writer, strings.len() as u32);
@@ -407,7 +430,7 @@ impl Byml {
 		write_sorted_string_table(string_table_offset as _, &strings);
 
 		writer.seek(offset);
-		let mut long_type_offsets = BTreeMap::new();
+		let mut long_type_offsets = IndexMap::new();
 		for long_type in tables.long_types {
 			long_type_offsets.insert(long_type, writer.position());
 			match long_type {
@@ -468,9 +491,9 @@ impl Byml {
 	fn write_element(
 		writer: &mut BinaryWriter,
 		value: &Element,
-		strings: &[Rc<str>],
+		strings: &[Arc<str>],
 		container_offsets: &HashMap<Container, usize>,
-		long_type_offsets: &BTreeMap<LongElement, usize>,
+		long_type_offsets: &IndexMap<LongElement, usize>,
 	) {
 		match value {
 			Element::Array(array) => {
@@ -556,15 +579,15 @@ impl Byml {
 }
 
 struct ReadTables {
-	keys: Box<[Rc<str>]>,
-	strings: Box<[Rc<str>]>,
-	found_containers: BTreeMap<usize, Container>,
+	keys: Box<[Arc<str>]>,
+	strings: Box<[Arc<str>]>,
+	found_containers: IndexMap<usize, Container>,
 }
 
 #[derive(Default)]
 struct FirstTraversal {
-	keys: HashSet<Rc<str>>,
-	strings: HashSet<Rc<str>>,
+	keys: HashSet<Arc<str>>,
+	strings: HashSet<Arc<str>>,
 	long_types: HashSet<LongElement>,
 	containers: HashSet<Container>,
 }

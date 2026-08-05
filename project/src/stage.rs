@@ -1,10 +1,6 @@
-use std::{
-	fs,
-	path::{Path, PathBuf},
-	rc::Rc,
-};
+use std::{fs, path::Path, sync::Arc};
 
-use cassava::{byaml, sarc, util::BinaryReader};
+use cassava::{byaml, util::BinaryReader};
 use glam::Vec3;
 use indexmap::IndexMap;
 use relative_path::RelativePath;
@@ -13,7 +9,7 @@ use slotmap::{SlotMap, new_key_type};
 use snafu::{OptionExt, ResultExt, Whatever, ensure_whatever, whatever};
 use tracing::warn;
 
-use crate::{ALProject, DiskRef, ProjectAsset, util::load_szs};
+use crate::{DiskRef, ProjectAsset, util::load_szs};
 
 new_key_type! { pub struct ObjectKey; }
 
@@ -25,6 +21,8 @@ pub struct Stage {
 	pub design_lists: IndexMap<String, Node>,
 	pub layers: Vec<String>,
 	pub design_files: IndexMap<String, DiskRef<Vec<u8>>>,
+	pub entrance_cameras: Vec<Camera>,
+	pub koopa_freerunning: (),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,12 +97,12 @@ impl Stage {
 				let szs = fs::read(sound_path).whatever_context("failed to read stage's sound archive")?;
 				let sarc = load_szs(&szs)?;
 				let byml = sarc
-					.get_file_data_by_name(&format!("{stage_name}.byml"))
+					.get_file(&format!("{stage_name}.byml"))
 					.whatever_context("unable to find stage byml in stage's sound archive")?;
-				if sarc.get_filenames().count() > 0 {
+				if sarc.filenames().count() > 0 {
 					warn!(
-						"{stage_name}Sound.szs has more files than expected {:?}",
-						sarc.get_filenames().collect::<Vec<&String>>()
+						"{stage_name}Sound.szs has more files than expected ({:?})",
+						sarc.filenames().collect::<Vec<_>>()
 					)
 				}
 				Ok(
@@ -120,7 +118,7 @@ impl Stage {
 					fs::read(design_path).whatever_context("failed to read stage's design archive")?;
 				let sarc = load_szs(&szs)?;
 				let byml = sarc
-					.get_file_data_by_name(&format!("{stage_name}.byml"))
+					.get_file(&format!("{stage_name}.byml"))
 					.whatever_context("unable to find stage byml in stage's design archive")?;
 				Ok((
 					byaml::Byml::read(&mut BinaryReader::new(&byml))
@@ -135,7 +133,7 @@ impl Stage {
 			let szs = fs::read(map_path).whatever_context("failed to read stage's design archive")?;
 			let sarc = load_szs(&szs)?;
 			let byml = sarc
-				.get_file_data_by_name(&design_byml_name)
+				.get_file(&design_byml_name)
 				.whatever_context("unable to find stage byml in stage's design archive")?;
 			(
 				byaml::Byml::read(&mut BinaryReader::new(&byml))
@@ -149,7 +147,7 @@ impl Stage {
 				.root_node
 				.whatever_context("no root node in byml file")?;
 			match root_node {
-				byaml::Container::Dictionary(value) => Ok(Rc::unwrap_or_clone(value).into_inner()),
+				byaml::Container::Dictionary(value) => Ok(Arc::unwrap_or_clone(value).into_inner()),
 				byaml::Container::Array(_) => whatever!("byml file's root node is an array"),
 			}
 		}
@@ -161,17 +159,13 @@ impl Stage {
 
 		let design_files = if let Some(archive) = design_archive {
 			archive
-				.get_filenames()
-				.map(|file_name| {
+				.files()
+				.map(|(file_name, data)| {
 					(
 						file_name.to_owned(),
 						DiskRef {
 							path: save_dir_rel.join(file_name),
-							value: Some(
-								archive
-									.get_file_data_by_name(file_name)
-									.expect("files should have existed"),
-							),
+							value: Some(data.to_vec()),
 						},
 					)
 				})
@@ -180,6 +174,8 @@ impl Stage {
 			Default::default()
 		};
 
+		map_archive.get_file("CameraParam.byml");
+
 		Ok(Self {
 			objects: Default::default(),
 			map_lists: Default::default(),
@@ -187,19 +183,22 @@ impl Stage {
 			design_lists: Default::default(),
 			layers: Default::default(),
 			design_files,
+			entrance_cameras: Default::default(),
+			koopa_freerunning: Default::default(),
 		})
 	}
 }
 
 impl ProjectAsset for Stage {
 	fn load(path: &Path) -> Result<Self, Whatever> {
-		let data = fs::read(path.join("stage.toml")).whatever_context("failed to read stage file")?;
-		toml::from_slice(&data).whatever_context("failed to load stage file")
+		let data =
+			fs::read_to_string(path.join("stage.ron")).whatever_context("failed to read stage file")?;
+		ron::from_str(&data).whatever_context("failed to load stage file")
 	}
 
 	fn save(&self, path: &Path) -> Result<(), Whatever> {
-		let file = toml::to_string_pretty(self).whatever_context("failed to serialize stage file")?;
-		fs::write(path.join("stage.toml"), file).whatever_context("failed to write stage file")?;
+		let file = ron::to_string(self).whatever_context("failed to serialize stage file")?;
+		fs::write(path.join("stage.ron"), file).whatever_context("failed to write stage file")?;
 
 		for (file_name, ele) in &self.design_files {
 			ele

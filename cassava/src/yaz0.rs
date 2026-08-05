@@ -1,5 +1,7 @@
 use std::{
-	hint::black_box, io::Read, pin::Pin, task::{Context, Poll, RawWaker, RawWakerVTable, Waker}
+	io::Read,
+	pin::Pin,
+	task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
 use snafu::prelude::*;
@@ -70,8 +72,6 @@ pub fn decompress(input: &[u8]) -> Result<(Vec<u8>, u32), Error> {
 
 	Ok((out, alignment))
 }
-
-// unsafe is good for the soul
 
 pub struct Yaz0Stream<'a> {
 	alignment: u32,
@@ -159,12 +159,16 @@ impl<'a> Yaz0Stream<'a> {
 	}
 }
 
-struct OuterData {
-	ptr: *mut [u8],
+#[repr(C, packed)]
+struct OuterData<'a> {
+	slice: &'a mut [u8],
+	index: usize,
 }
-pub fn push_byte(value: u8) -> impl Future<Output = ()> {
+
+		// life isn't worth living without a little danger :)
+fn push_byte(value: u8) -> impl Future<Output = ()> {
 	enum Fut {
-		Push(u8),
+		Pushing(u8),
 		Pushed,
 	}
 
@@ -173,13 +177,16 @@ pub fn push_byte(value: u8) -> impl Future<Output = ()> {
 
 		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 			match &mut *self {
-				Fut::Push(value) => {
+				Fut::Pushing(value) => {
 					let data = cx.waker().data().cast::<OuterData>().cast_mut();
 					let data = unsafe { &mut *data };
-					unsafe { data.ptr.cast::<u8>().write(*value) };
-					data.ptr = unsafe { &raw mut (&mut *data.ptr)[1..] };
+					if data.slice.len() == data.index {
+						return Poll::Pending;
+					}
+					data.slice[data.index] = *value;
+					data.index += 1;
 					*self = Fut::Pushed;
-					if data.ptr.len() == 0 {
+					if data.slice.len() == data.index {
 						Poll::Pending
 					} else {
 						Poll::Ready(())
@@ -189,37 +196,32 @@ pub fn push_byte(value: u8) -> impl Future<Output = ()> {
 			}
 		}
 	}
-	Fut::Push(value)
+	Fut::Pushing(value)
 }
+// taken directly from rust's standard library
 fn noop() -> &'static RawWakerVTable {
-	static NOOP: RawWakerVTable = RawWakerVTable::new(
-		// Cloning just returns a new no-op raw waker
-		|data| RawWaker::new(data, &NOOP),
-		// `wake` does nothing
-		|_| {},
-		// `wake_by_ref` does nothing
-		|_| {},
-		// Dropping does nothing as we don't allocate anything
-		|_| {},
-	);
+	static NOOP: RawWakerVTable =
+		RawWakerVTable::new(|data| RawWaker::new(data, &NOOP), |_| {}, |_| {}, |_| {});
 	&NOOP
 }
 
 impl<'a> Read for Yaz0Stream<'a> {
 	fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
 		let Some(coroutine) = self.coroutine.as_mut() else {
-			return Ok(0)
+			return Ok(0);
 		};
-		let mut data_ptr = &raw mut *buf;
+		let mut data_ptr = OuterData {
+			slice: buf,
+			index: 0,
+		};
 		let waker = unsafe { Waker::from_raw(RawWaker::new((&raw mut data_ptr).cast(), &noop())) };
 		let mut context = Context::from_waker(&waker);
-		let result = match coroutine.as_mut().poll(&mut context) {
+		match coroutine.as_mut().poll(&mut context) {
 			Poll::Ready(result) => {
 				self.coroutine.take();
-				result.map(|_| buf.len()).map_err(std::io::Error::other)},
+				result.map(|_| buf.len()).map_err(std::io::Error::other)
+			}
 			Poll::Pending => Ok(buf.len()),
-		};
-		black_box(&mut data_ptr);
-		result
+		}
 	}
 }

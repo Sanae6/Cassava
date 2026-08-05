@@ -24,8 +24,8 @@ fn main() {
 		// println!("{}: {sound_count}", p.file_name().unwrap().to_string_lossy())
 		println!("{}", p.file_name().unwrap().to_string_lossy());
 		let stem = p.file_stem().unwrap();
-		for name in data.get_filenames() {
-			let path = Path::new(name.as_str());
+		for name in data.filenames() {
+			let path = Path::new(name);
 			if path
 				.file_stem()
 				.unwrap()
