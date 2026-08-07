@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<!DOCTYPE cambalache-project SYSTEM "cambalache-project.dtd">
+<!-- Created with Cambalache 1.1.0 -->
+<cambalache-project version="1.0.0" target_tk="gtk-4.0" depends="libadwaita-1,libpanel-1">
+  <ui template-class="CassavaWindow" filename="Cassava.ui" sha256="c779ea6b9edcb33cca48dbafbd8aa9a1ac1f909333fabb819a0a0065f57e5fae"/>
+</cambalache-project>

@@ -1,0 +1,2 @@
+git clone https://gitlab.gnome.org/World/Rust/libpanel-rs nix/libpanel-rs
+cmb-catalog-gen --gir libpanel-rs/Panel-1.gir --output nix/libpanel-1.xml --gtk-version 4 --skip-types PanelLayeredSettings PanelSettings --dependencies gtk-4.0 libadwaita-1 --external-catalogs /nix/store/jjhinpkdgh3n6ihx30vwyz69475n6mp5-cambalache-1.0/share/cambalache/catalogs/gtk-4.0.xml /nix/store/jjhinpkdgh3n6ihx30vwyz69475n6mp5-cambalache-1.0/share/cambalache/catalogs/libadwaita-1.xml

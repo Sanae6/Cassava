@@ -20,7 +20,7 @@
           inherit system;
           overlays = [ inputs.fenix.overlays.default ];
         };
-        cambalache-fixed = pkgs.callPackage ./cambalache-fixed.nix { };
+        cambalache-fixed = pkgs.callPackage ./nix/cambalache-fixed.nix { };
       in
       with pkgs;
       {

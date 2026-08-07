@@ -6,6 +6,7 @@
   glib,
   gtk3,
   gtk4,
+  libpanel,
   gtksourceview5,
   webkitgtk_4_1,
   webkitgtk_6_0,
@@ -37,6 +38,7 @@
     glib
     gtk3
     gtk4
+    libpanel
     gtksourceview5
     webkitgtk_4_1
     webkitgtk_6_0
@@ -59,4 +61,7 @@
       env.NIX_CFLAGS_COMPILE = "-I${linuxHeaders}/include/drm";
     }))
   ];
+  postInstall = ''
+    install -m 444 ${./libpanel-1.xml} $out/share/cambalache/catalogs/libpanel-1.xml
+  '';
 }))
