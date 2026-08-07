@@ -1,65 +1,19 @@
-use std::path::PathBuf;
+mod window;
 
-use eframe::{
-	App, CreationContext, NativeOptions,
-	egui::{CentralPanel, MenuBar},
-};
-use egui_dock::{DockArea, DockState};
+use gtk::prelude::*;
+use gtk::{Application, gio, glib};
+use window::Window;
 
-use crate::ui::{FileNode, State, TabType};
+const APP_ID: &str = "ca.sanae.Cassava";
 
-mod ui;
-
-fn main() {
-	eframe::run_native(
-		"Cassava",
-		NativeOptions::default(),
-		Box::new(|ctx| Ok(Box::new(Cassava::new(ctx)))),
-	)
-	.unwrap();
+fn main() -> glib::ExitCode {
+	gio::resources_register_include!("resources.gresource").expect("Failed to register resources.");
+	let app = Application::builder().application_id(APP_ID).build();
+	app.connect_activate(build_ui);
+	app.run()
 }
 
-struct Cassava {
-	state: State,
-	dock_state: DockState<TabType>,
-}
-
-impl Cassava {
-	fn new(ctx: &CreationContext) -> Self {
-		let dock_state = DockState::new(vec![TabType::FileTree {
-			root: FileNode::new_directory(
-				PathBuf::from("/home/aubrey/Projects/modding/smo/romfs")
-					.canonicalize()
-					.expect("hardcoded path is wrong Are you Stupid"),
-			),
-		}]);
-		// let dock_state = DockState::new(vec![]);
-
-		Self {
-			state: State::new(ctx),
-			dock_state,
-		}
-	}
-}
-
-impl App for Cassava {
-	fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame) {
-		ui.ctx().clear_animations();
-		ui.ctx().all_styles_mut(|s| s.animation_time = 0.0);
-
-		MenuBar::new().ui(ui, |ui| {
-			ui.menu_button("mreeow", |ui| {
-				if ui.button("mrrrrp").clicked() {
-					println!("maow");
-				}
-			});
-		});
-
-		CentralPanel::no_frame().show_inside(ui, |ui| {
-			DockArea::new(&mut self.dock_state)
-				.show_leaf_collapse_buttons(false)
-				.show_leaf_close_all_buttons(false)
-				.show_inside(ui, &mut self.state)
-		});
-	}
+fn build_ui(app: &Application) {
+	let window = Window::new(app);
+	window.present();
 }

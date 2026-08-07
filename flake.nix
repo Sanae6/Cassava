@@ -20,6 +20,7 @@
           inherit system;
           overlays = [ inputs.fenix.overlays.default ];
         };
+        cambalache-fixed = pkgs.callPackage ./cambalache-fixed.nix { };
       in
       with pkgs;
       {
@@ -44,6 +45,15 @@
             vulkan-loader
             vulkan-tools
             libudev-zero
+
+            # gtk
+            pango
+            cairo
+            glib
+            gtk4
+            libadwaita
+            libpanel
+            cambalache-fixed
 
             # WINIT_UNIX_BACKEND=wayland
             wayland

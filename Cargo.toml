@@ -2,8 +2,8 @@
 resolver = "3"
 members = [
   "cassava",
-  # "editor",
-  "editor-bevy",
+  "editor",
+  # "editor-bevy",
   "project",
 ]
 
