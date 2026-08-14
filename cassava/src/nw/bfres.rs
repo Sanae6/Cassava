@@ -839,7 +839,7 @@ pub enum BorderColor {
 
 impl ModelArchive {
 	pub fn read(reader: &mut BinaryReader) -> Result<ModelArchive, Error> {
-		let (file_info, _file_header) =
+		let (file_info, _file_header, mut reader) =
 			read_binary_file_header(reader, Some(*b"FRES    ")).context(FileHeaderSnafu)?;
 
 		let name_offset = reader.read_u64()?;
@@ -865,26 +865,26 @@ impl ModelArchive {
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
 
 		let memory_pool = reader.scope(memory_pool_offset, |reader| -> Result<_, Error> {
-			let _a = reader.read_u32()?;
-			let memory_pool_size = reader.read_u32()?;
-			let memory_pool_offset = reader.read_u64()?;
+			let _property = reader.read_u32()?;
+			let size = reader.read_u32()?;
+			let offset = reader.read_u64()?;
 
-			let memory_pool = reader.scope(memory_pool_offset as usize, |reader| {
+			let memory_pool = reader.scope(offset as usize, |reader| {
 				reader
-					.read_slice(memory_pool_size as usize)
+					.read_slice(size as usize)
 					.map(<[_]>::to_vec)
 			})?;
 
 			Ok(memory_pool)
 		})?;
 		let models = read_dict::<_, ModelError>(
-			reader,
+			&mut reader,
 			model_array,
 			model_dictionary,
 			|reader, dict_name, _| Self::read_model(reader, dict_name, &memory_pool),
 		)?;
 		let embedded_files = read_dict::<_, util::Error>(
-			reader,
+			&mut reader,
 			embedded_file_array,
 			embedded_file_dictionary,
 			|reader, _, _| {

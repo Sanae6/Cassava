@@ -1,13 +1,13 @@
 #[allow(unused)]
 pub mod bffnt;
 pub mod bfres;
+pub mod bnsh;
 pub mod bntx;
 pub mod ptcl;
 pub mod res_dict;
 pub mod user_data;
-pub mod bnsh;
 
-use snafu::{OptionExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::util::{self, BinaryReader};
 
@@ -30,7 +30,17 @@ pub enum FileHeaderError {
 	// #[snafu(display("unsupported address size: {address_size}"))]
 	// UnsupportedAddressSize { address_size: u16 },
 	#[snafu(display("arithmetic overflow"))]
-	ArithmeticOverflow,
+	FileNameOutOfBounds,
+	#[snafu(display("file-defined file size is too small"))]
+	IncorrectFileSize {
+		source: crate::util::Error,
+		backtrace: snafu::Backtrace,
+	},
+	#[snafu(display("unable to seek to after the file header"))]
+	FileTooSmall {
+		source: crate::util::Error,
+		backtrace: snafu::Backtrace,
+	},
 }
 
 #[derive(Debug)]
@@ -51,10 +61,10 @@ pub struct BinaryFileHeader {
 	file_size: u32,
 }
 
-pub fn read_binary_file_header(
-	reader: &mut BinaryReader,
+pub fn read_binary_file_header<'a>(
+	reader: &mut BinaryReader<'a>,
 	expected_magic: Option<[u8; 8]>,
-) -> Result<(BinaryFileInfo, BinaryFileHeader), FileHeaderError> {
+) -> Result<(BinaryFileInfo, BinaryFileHeader, BinaryReader<'a>), FileHeaderError> {
 	let start = reader.position();
 	reader.seek_rel(12)?;
 	match reader.read_bytes::<2>()? {
@@ -87,10 +97,17 @@ pub fn read_binary_file_header(
 		(reader.read_u16()?, reader.read_u32()?, reader.read_u32()?);
 	let file_name_offset = start
 		.checked_add(file_name_offset as _)
-		.context(ArithmeticOverflowSnafu)?;
+		.context(FileNameOutOfBoundsSnafu)?;
 	let file_name = reader.scope::<_, FileHeaderError>(file_name_offset, |reader| {
 		Ok(reader.read_null_terminated_string()?.to_owned())
 	})?;
+	let end_of_header = reader.position();
+	let mut reader = BinaryReader::new(
+		reader
+			.scope(start, |reader| reader.read_slice(file_size as usize))
+			.context(IncorrectFileSizeSnafu)?,
+	);
+	reader.seek_rel(end_of_header as _).context(FileTooSmallSnafu)?;
 
 	Ok((
 		BinaryFileInfo {
@@ -106,10 +123,14 @@ pub fn read_binary_file_header(
 			relocation_table_offset,
 			file_size,
 		},
+		reader
 	))
 }
 
-fn read_string_at<'a>(reader: &mut BinaryReader<'a>, offset: usize) -> Result<&'a str, util::Error> {
+fn read_string_at<'a>(
+	reader: &mut BinaryReader<'a>,
+	offset: usize,
+) -> Result<&'a str, util::Error> {
 	reader.scope(offset, |reader| {
 		let name_size = reader.read_u16()?;
 		reader.read_string(name_size as _)

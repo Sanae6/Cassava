@@ -79,6 +79,7 @@ fn main() {
 		.as_mut()
 		.unwrap()
 		.load(&QUrl::from("qrc:/qt/qml/ca/sanae/Cassava/qml/main.qml"));
+	engine.as_mut().unwrap();
 
 	app.as_mut().unwrap().exec();
 }

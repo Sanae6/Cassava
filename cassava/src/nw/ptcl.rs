@@ -92,31 +92,31 @@ const END_OF_LIST_MARKER: usize = u32::MAX as usize;
 
 impl EffectArchive {
 	pub fn read(reader: &mut BinaryReader) -> Result<EffectArchive, Error> {
-		let (file_info, file_header) =
+		let (file_info, file_header, mut reader) =
 			read_binary_file_header(reader, Some(*b"VFXB    ")).context(FileHeaderSnafu)?;
 		reader.seek(file_header.first_block_offset as usize)?;
 		let mut model_archive = None;
 		let mut texture_archive = None;
 		loop {
-			let binary_data = Self::read_binary_data(reader)?;
+			let binary_data = Self::read_binary_data(&mut reader)?;
 			// println!("{} {first_child_block:X}");
 			let magic_string = String::from_utf8_lossy(&binary_data.magic);
 			println!("root block: {magic_string:?}");
 			println!("{} {:?}", binary_data.child_count, binary_data.first_child);
 			match &binary_data.magic {
 				b"ESTA" => {
-					Self::read_emitter_sets(reader, binary_data.first_child).unwrap();
+					Self::read_emitter_sets(&mut reader, binary_data.first_child).unwrap();
 				}
 				b"PRMA" => {}
 				// G3D Primitives
-				b"G3PR" => model_archive = Some(Self::read_model_archive(reader, binary_data.data_start)?),
+				b"G3PR" => model_archive = Some(Self::read_model_archive(&mut reader, binary_data.data_start)?),
 				// G3D Resource Shaders
 				b"GRSN" => {
-					Self::read_shader_archive(reader, binary_data.data_start);
+					Self::read_shader_archive(&mut reader, binary_data.data_start);
 					eprintln!("grsning it");
 				}
 				b"GRTF" => {
-					texture_archive = Some(Self::read_texture_archive(reader, binary_data.data_start)?);
+					texture_archive = Some(Self::read_texture_archive(&mut reader, binary_data.data_start)?);
 				}
 				_ => {}
 			}
@@ -242,15 +242,15 @@ impl EffectArchive {
 	}
 
 	fn read_shader_archive(_reader: &mut BinaryReader, _data_start: usize) {
-		// reader
-		// 	.subfile_scope(data_start, |reader| -> Result<(), util::Error> {
-		// 		let ex = read_binary_file_header(reader, None).unwrap();
-		// 		reader.seek(0)?;
-		// 		let data = reader.read_slice(ex.1.file_size as usize)?;
-		// 		std::fs::write("target/EffectData.bfsha", data).unwrap();
-		// 		Ok(())
-		// 	})
-		// 	.unwrap();
+		_reader
+			.subfile_scope(_data_start, |reader| -> Result<(), util::Error> {
+				let ex = read_binary_file_header(reader, None).unwrap();
+				reader.seek(0)?;
+				let data = reader.read_slice(ex.1.file_size as usize)?;
+				std::fs::write("target/EffectData.bfsha", data).unwrap();
+				Ok(())
+			})
+			.unwrap();
 	}
 }
 

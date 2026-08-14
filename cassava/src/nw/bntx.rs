@@ -332,7 +332,7 @@ const DICT: [u8; 4] = *b"_DIC";
 
 impl TextureArchive {
 	pub fn read(reader: &mut BinaryReader) -> Result<TextureArchive, Error> {
-		let (file_info, _file_header) =
+		let (file_info, _file_header, mut reader) =
 			read_binary_file_header(reader, Some(*b"BNTX\0\0\0\0")).context(FileHeaderSnafu)?;
 
 		ensure!(
@@ -345,7 +345,7 @@ impl TextureArchive {
 		reader.seek_rel(8)?;
 		let texture_dictionary = reader.read_u64()? as usize;
 		let textures = read_dict::<TextureInfo, TextureError>(
-			reader,
+			&mut reader,
 			DICT,
 			texture_array,
 			texture_dictionary,

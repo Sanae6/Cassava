@@ -239,6 +239,10 @@ impl<'a> BinaryReader<'a> {
 		Ok(&self.inner[start..end])
 	}
 
+	pub fn read_slice_at(&mut self, offset: usize, count: usize) -> Result<&'a [u8], Error> {
+		self.scope(offset,|reader| reader.read_slice(count))
+	}
+
 	pub fn read_until(&mut self, terminator: u8) -> &'a [u8] {
 		let start = self.cursor;
 		let mut end = self.inner.len();
