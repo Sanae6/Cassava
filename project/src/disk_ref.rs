@@ -24,7 +24,7 @@ impl<T: ProjectAsset> DiskRef<T> {
 
 	pub fn save(&self, root_dir: &Path) -> Result<(), Whatever> {
 		match &self.value {
-			Some(value) => value.save(&self.path.to_logical_path(root_dir)),
+			Some(value) => value.save(&root_dir.join(self.path.to_logical_path(&root_dir))),
 			None => {
 				tracing::warn!("{} was not loaded, not attempting save", self.path);
 				Ok(())

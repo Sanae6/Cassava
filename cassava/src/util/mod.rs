@@ -4,6 +4,9 @@ use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 use num_traits::PrimInt;
 use snafu::prelude::*;
 
+mod arc_refcell_ext;
+pub use arc_refcell_ext::*;
+
 #[derive(Snafu, Debug)]
 pub enum Error {
 	#[snafu(display("alignment must be a power of two"))]
@@ -240,7 +243,7 @@ impl<'a> BinaryReader<'a> {
 	}
 
 	pub fn read_slice_at(&mut self, offset: usize, count: usize) -> Result<&'a [u8], Error> {
-		self.scope(offset,|reader| reader.read_slice(count))
+		self.scope(offset, |reader| reader.read_slice(count))
 	}
 
 	pub fn read_until(&mut self, terminator: u8) -> &'a [u8] {

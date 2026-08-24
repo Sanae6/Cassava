@@ -1,11 +1,12 @@
 [workspace]
 resolver = "3"
 members = [
-  "cassava",
-  # "editor",
-  "editor-qt",
-  # "editor-bevy",
-  "project",
+"cassava",
+# "editor",
+# "editor-qt",
+"editor-gpui",
+# "editor-bevy",
+"project",
 ]
 
 [workspace.dependencies]
@@ -14,6 +15,11 @@ snafu = { version = "0.9.0", features = ["unstable-provider-api"] }
 glam = { version = "0.33.2", features = ["serde"] }
 toml = "1.1.4"
 tracing = "0.1.44"
+atomic_refcell = "0.1.14"
+clap = { version = "^4.6.1", features = ["derive"] }
+
+# [patch."https://github.com/zed-industries/zed.git"]
+# gpui = { git = "https://github.com/gpui-ce/gpui-ce" }
 
 [profile.dev]
 opt-level = 1

@@ -4,7 +4,7 @@ use num_traits::FromPrimitive;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use crate::{
-	nw::{FileHeaderError, read_binary_file_header},
+	nw::{BinaryFileInfo, FileHeaderError, read_binary_file_header},
 	util::{self, BinaryReader},
 };
 
@@ -34,6 +34,7 @@ pub enum Error {
 
 #[derive(Debug)]
 pub struct ShaderFile {
+	pub file_info: BinaryFileInfo,
 	pub target_api_type: u16,
 	pub target_api_version: u16,
 	pub target_code_type: u8,
@@ -64,7 +65,7 @@ pub struct Program {
 }
 
 #[bitfield(u8)]
-struct ShaderFlags {
+pub struct ShaderFlags {
 	pub separation_enabled: bool,
 	pub res_shader: bool,
 	#[bits(6)]
@@ -72,7 +73,7 @@ struct ShaderFlags {
 }
 
 #[derive(FromPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
-enum CodeType {
+pub enum CodeType {
 	Binary,
 	IntermediateRepresentation,
 	Source,
@@ -80,7 +81,7 @@ enum CodeType {
 }
 
 #[derive(FromPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
-enum SourceFormat {
+pub enum SourceFormat {
 	Glsl,
 	Hlsl,
 }
@@ -127,47 +128,45 @@ impl ShaderFile {
 		let compiler_version = reader.read_u32()?;
 		let shader_variation_count = reader.read_u32()? as usize;
 		let shader_variation_array = reader.read_u64()? as usize;
-		let shader_binary_pool = reader.read_u64()? as usize;
+		let _shader_binary_pool = reader.read_u64()? as usize;
 		let low_level_compiler_version = reader.read_u64()?;
 
-		let memory_pool = reader.scope(shader_binary_pool, |reader| -> Result<_, Error> {
-			println!("memory pool at {:04X}", reader.position());
-			let _property = reader.read_u32()?;
-			let size = reader.read_u32()?;
-			let offset = reader.read_u64()?;
+		// let memory_pool = reader.scope(shader_binary_pool, |reader| -> Result<_, Error> {
+		// 	println!("memory pool at {:04X}", reader.position());
+		// 	let _property = reader.read_u32()?;
+		// 	let size = reader.read_u32()?;
+		// 	let offset = reader.read_u64()?;
 
-			let memory_pool = reader.scope(offset as usize, |reader| reader.read_slice(size as usize))?;
+		// 	let memory_pool = reader.scope(offset as usize, |reader| reader.read_slice(size as usize))?;
 
-			Ok(memory_pool)
-		})?;
+		// 	Ok(memory_pool)
+		// })?;
 
 		let shader_variations = reader.scope(shader_variation_array, |reader| {
-			reader.read_vec(
-				shader_variation_count,
-				|reader, index| -> Result<_, Error> {
-					let source_program = reader.read_u64()? as usize;
-					let ir_program = reader.read_u64()? as usize;
-					let binary_program = reader.read_u64()? as usize;
-					reader.seek_rel(32 + 8)?;
-					let read_program = |reader: &mut BinaryReader, program: usize| {
-						(program != 0)
-							.then(|| reader.scope(program, |reader| Self::read_program(reader, memory_pool)))
-							.transpose()
-					};
-					let source_program = read_program(reader, source_program)?;
-					let ir_program = read_program(reader, ir_program)?;
-					let binary_program = read_program(reader, binary_program)?;
-					Ok(Variation {
-						source_program,
-						ir_program,
-						binary_program,
-					})
-				},
-			)
+			reader.read_vec(shader_variation_count, |reader, _| -> Result<_, Error> {
+				let source_program = reader.read_u64()? as usize;
+				let ir_program = reader.read_u64()? as usize;
+				let binary_program = reader.read_u64()? as usize;
+				reader.seek_rel(32 + 8)?;
+				let read_program = |reader: &mut BinaryReader, program: usize| {
+					(program != 0)
+						.then(|| reader.scope(program, Self::read_program))
+						.transpose()
+				};
+				let source_program = read_program(reader, source_program)?;
+				let ir_program = read_program(reader, ir_program)?;
+				let binary_program = read_program(reader, binary_program)?;
+				Ok(Variation {
+					source_program,
+					ir_program,
+					binary_program,
+				})
+			})
 		})?;
 		// println!("{file_info:#?} {header:?}");
 
 		Ok(ShaderFile {
+			file_info,
 			target_api_type,
 			target_api_version,
 			target_code_type,
@@ -177,7 +176,7 @@ impl ShaderFile {
 		})
 	}
 
-	fn read_program(reader: &mut BinaryReader, memory_pool: &[u8]) -> Result<Program, Error> {
+	fn read_program(reader: &mut BinaryReader) -> Result<Program, Error> {
 		let flags = ShaderFlags::from_bits(reader.read_u8()?);
 		let code_type = CodeType::from_u8(reader.read_u8()?).context(InvalidCodeTypeSnafu)?;
 		let source_format =
@@ -202,7 +201,7 @@ impl ShaderFile {
 
 		let read_shader = |reader: &mut BinaryReader, shader: usize| {
 			(shader != 0)
-				.then(|| reader.scope(shader, |reader| Self::read_shader(reader, memory_pool)))
+				.then(|| reader.scope(shader, Self::read_shader))
 				.transpose()
 		};
 		let vertex_shader = read_shader(reader, vertex_shader)?;
@@ -226,7 +225,7 @@ impl ShaderFile {
 		})
 	}
 
-	fn read_shader(reader: &mut BinaryReader, memory_pool: &[u8]) -> Result<Shader, Error> {
+	fn read_shader(reader: &mut BinaryReader) -> Result<Shader, Error> {
 		let _runtime_data_address = reader.read_u64()?;
 		let control = reader.read_u64()? as usize;
 		let data = reader.read_u64()? as usize;
@@ -286,9 +285,6 @@ impl ShaderFile {
 				})
 			})?;
 		}
-		// let data = BinaryReader::new(memory_pool).scope(data, |reader| {
-		// 	reader.read_slice(data_size).map(<[_]>::to_vec)
-		// })?;
 
 		Ok(Shader {
 			control,

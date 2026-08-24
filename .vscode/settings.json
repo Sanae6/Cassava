@@ -1,5 +1,5 @@
 {
   "qt-qml.qmlls.enabled": true,
   "qt-qml.qmlls.customExePath": "/nix/store/nd21z3l0xv5r0xrwv943sb3f6fn6l0xn-qt-bridge-test-6.11.1/bin/qmlls",
-  "qt-core.qtInstallationRoot": "/nix/store/nd21z3l0xv5r0xrwv943sb3f6fn6l0xn-qt-bridge-test-6.11.1/"
+  "qt-core.qtInstallationRoot": "/nix/store/nd21z3l0xv5r0xrwv943sb3f6fn6l0xn-qt-bridge-test-6.11.1/",
 }

@@ -165,7 +165,7 @@ struct OuterData<'a> {
 	index: usize,
 }
 
-		// life isn't worth living without a little danger :)
+// life isn't worth living without a little danger :)
 fn push_byte(value: u8) -> impl Future<Output = ()> {
 	enum Fut {
 		Pushing(u8),

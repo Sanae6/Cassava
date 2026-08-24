@@ -351,7 +351,7 @@ fn project_setup(
 				let r = ui.add_enabled_ui(state.is_valid_path(), |ui| ui.button("Create"));
 				if r.inner.clicked() {
 					let path = Path::new(&state.path);
-					match ALProject::create(path) {
+					match ALProject::create(path, "".into()) {
 						Ok(project) => {
 							info!("success!");
 							config.config_data.project_dirs.push(path.to_owned());

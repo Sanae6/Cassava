@@ -1,9 +1,11 @@
+#![allow(semicolon_in_expressions_from_non_local_macros)]
 use std::{
 	fmt::Debug,
 	fs,
 	path::{Path, PathBuf},
 };
 
+use chrono::{DateTime, Local, Utc};
 use indexmap::IndexMap;
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
@@ -21,6 +23,8 @@ mod util;
 pub struct ALProject {
 	#[serde(skip)]
 	root: PathBuf,
+	pub name: String,
+	pub last_opened: DateTime<Utc>,
 	pub stages: IndexMap<String, DiskRef<Stage>>,
 	objects: IndexMap<String, ()>,
 	effects: IndexMap<String, String>,
@@ -34,11 +38,13 @@ pub struct ALProject {
 impl ALProject {
 	const PROJECT_FILE: &str = "cassava-project.ron";
 
-	pub fn create(directory: &Path) -> Result<Self, Whatever> {
+	pub fn create(directory: &Path, name: &str) -> Result<Self, Whatever> {
 		fs::create_dir_all(directory.join("stages"))
 			.with_whatever_context(|err| format!("failed to create project: {err}"))?;
 
 		let project = Self {
+			name: name.to_owned(),
+			last_opened: Local::now().to_utc(),
 			root: directory.to_owned(),
 			stages: IndexMap::new(),
 			objects: IndexMap::new(),
@@ -57,12 +63,34 @@ impl ALProject {
 		Ok(project)
 	}
 
-	pub fn load(directory: &Path) -> Result<ALProject, Whatever> {
+	pub fn peek(directory: &Path) -> Result<ALProjectPeek, Whatever> {
 		let data = fs::read_to_string(directory.join(Self::PROJECT_FILE))
 			.with_whatever_context(|err| format!("failed to read project file: {err}"))?;
 
 		ron::from_str(&data)
-			.with_whatever_context(|err| format!("project file could not be read as toml: {err}"))
+			.with_whatever_context(|err| format!("project file could not be read as ron: {err}"))
+	}
+
+	pub fn load(directory: &Path) -> Result<ALProject, Whatever> {
+		let data = fs::read_to_string(directory.join(Self::PROJECT_FILE))
+			.with_whatever_context(|err| format!("failed to read project file: {err}"))?;
+
+		let mut project: ALProject = ron::from_str(&data)
+			.with_whatever_context(|err| format!("project file could not be read as ron: {err}"))?;
+
+		project.root = directory.to_owned();
+
+		Ok(project)
+	}
+
+	pub fn save(&self) -> Result<(), Whatever> {
+		fs::write(
+			self.root.join(Self::PROJECT_FILE),
+			ron::to_string(&self).expect("serialization failure"),
+		)
+		.with_whatever_context(|err| format!("failed to create project file: {err}"))?;
+
+		Ok(())
 	}
 
 	fn save_file<T: ProjectAsset>(&self, file_ref: &DiskRef<T>) -> Result<(), Whatever> {
@@ -74,17 +102,18 @@ impl ALProject {
 		romfs_root: &Path,
 		stage_name: &str,
 	) -> Result<&mut Stage, Whatever> {
-		let stage_dir_rel: RelativePathBuf = format!("stages/{stage_name}").into();
-		let stage = Stage::import(romfs_root, stage_name, &stage_dir_rel)?;
+		let stage = Stage::import(romfs_root, stage_name)?;
 
 		let file_ref = DiskRef {
-			path: stage_dir_rel,
+			path: format!("stages/{stage_name}").into(),
 			value: Some(stage),
 		};
 
 		self.save_file(&file_ref)?;
 
 		self.stages.insert(stage_name.to_owned(), file_ref);
+
+		self.save()?;
 
 		Ok(
 			self
@@ -96,4 +125,10 @@ impl ALProject {
 				.unwrap(),
 		)
 	}
+}
+
+#[derive(Deserialize)]
+pub struct ALProjectPeek {
+	pub name: String,
+	pub last_opened: DateTime<Utc>,
 }

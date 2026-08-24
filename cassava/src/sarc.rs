@@ -1,6 +1,5 @@
 use std::fs;
 use std::ops::Range;
-use std::path::PathBuf;
 use std::{collections::HashMap, path::Path};
 
 use snafu::prelude::*;
@@ -361,7 +360,7 @@ fn calc_hash(string: &[u8], hash_multiplier: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-	use std::fs;
+	use std::{fs, path::PathBuf};
 
 	use crate::yaz0;
 

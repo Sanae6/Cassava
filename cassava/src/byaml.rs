@@ -1,6 +1,7 @@
 use std::{
 	backtrace::Backtrace,
 	collections::{HashMap, HashSet},
+	ops::Index,
 	ptr,
 	sync::Arc,
 };
@@ -10,6 +11,7 @@ use indexmap::IndexMap;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use ordered_float::OrderedFloat;
+use smol_str::SmolStr;
 use snafu::{OptionExt, Snafu, ensure};
 
 use crate::util::{self, BinaryReader, BinaryWriter, ByteOrder, align_up, try_align_up};
@@ -41,7 +43,7 @@ pub struct Byml {
 	pub root_node: Option<Container>,
 }
 
-pub type Dictionary = IndexMap<Arc<str>, Element>;
+pub type Dictionary = IndexMap<SmolStr, Element>;
 pub type Array = Vec<Element>;
 
 #[derive(Debug, Clone, Eq)]
@@ -81,6 +83,20 @@ impl Container {
 			Container::Dictionary(value) => Element::Dictionary(value),
 		}
 	}
+
+	pub fn as_dictionary(&self) -> Option<Arc<AtomicRefCell<Dictionary>>> {
+		match self.clone() {
+			Container::Dictionary(value) => Some(value),
+			_ => None,
+		}
+	}
+
+	pub fn as_array(&self) -> Option<Arc<AtomicRefCell<Array>>> {
+		match self.clone() {
+			Container::Array(value) => Some(value),
+			_ => None,
+		}
+	}
 }
 
 impl std::hash::Hash for Container {
@@ -97,7 +113,7 @@ impl std::hash::Hash for Container {
 pub enum Element {
 	Array(Arc<AtomicRefCell<Array>>),
 	Dictionary(Arc<AtomicRefCell<Dictionary>>),
-	String(Arc<str>),
+	String(SmolStr),
 	Boolean(bool),
 	I32(i32),
 	F32(f32),
@@ -124,7 +140,49 @@ impl Element {
 			Element::Null => DataType::Null,
 		}
 	}
+
+	pub fn is_null(&self) -> bool {
+		matches!(self, Element::Null)
+	}
 }
+
+macro_rules! accessors {
+	($($name: ident: $ty: ty),+ $(,)?) => {
+		paste::paste!{
+			impl Element {
+				$(
+					pub fn [<as_ $name:snake>](&self) -> Option<$ty> {
+						match self {
+							Element::$name(value) => Some(value.clone()),
+							_ => None
+						}
+					}
+
+					pub fn [<get_ $name:snake _array>](&self, index: usize) -> Option<$ty> {
+						self.as_array()?.borrow().get(index)?.[<as_ $name:snake>]()
+					}
+
+					pub fn [<get_ $name:snake _dict>](&self, key: &str) -> Option<$ty> {
+						self.as_dictionary()?.borrow().get(key)?.[<as_ $name:snake>]()
+					}
+				)+
+			}
+		}
+	};
+}
+
+accessors!(
+	Array: Arc<AtomicRefCell<Array>>,
+	Dictionary: Arc<AtomicRefCell<Dictionary>>,
+	String: SmolStr,
+	Boolean: bool,
+	I32: i32,
+	U32: u32,
+	F32: f32,
+	I64: i64,
+	U64: u64,
+	F64: f64,
+);
 
 impl Eq for Element {}
 
@@ -180,7 +238,7 @@ impl Byml {
 			return Err(Error::UnsupportedVersion);
 		}
 
-		fn read_string_table(reader: &mut BinaryReader) -> Result<Box<[Arc<str>]>, Error> {
+		fn read_string_table(reader: &mut BinaryReader) -> Result<Box<[SmolStr]>, Error> {
 			let at = reader.read_u32()?;
 			if at == 0 {
 				// panic!();
@@ -199,13 +257,13 @@ impl Byml {
 				let offsets = reader.read_boxed_array(count + 1, |reader, _| reader.read_u32())?;
 				let strings = reader.read_boxed_array(count + 1, |reader, i| {
 					if i == count {
-						return Ok(Arc::from(""));
+						return Ok(SmolStr::new(""));
 					}
 					let (start, end) = (offsets[i] as usize, offsets[i + 1] as usize);
 					reader.seek(table_start + start)?;
 					reader
 						.read_string(end - start - 1)
-						.map(|str| Into::<Arc<str>>::into(str))
+						.map(|str| Into::<SmolStr>::into(str))
 				})?;
 				Ok(strings)
 			})
@@ -343,6 +401,16 @@ impl Byml {
 			_ => return Err(Error::InvalidDataType),
 		})
 	}
+
+	// utilities
+
+	pub fn as_dictionary(&self) -> Option<Arc<AtomicRefCell<Dictionary>>> {
+		self.root_node.as_ref().and_then(Container::as_dictionary)
+	}
+
+	pub fn as_array(&self) -> Option<Arc<AtomicRefCell<Array>>> {
+		self.root_node.as_ref().and_then(Container::as_array)
+	}
 }
 
 #[derive(Snafu, Debug)]
@@ -365,7 +433,7 @@ impl Byml {
 		let mut tables = FirstTraversal::default();
 		Self::find_containers(root_node.clone(), &mut tables);
 
-		let string_table_size = |strings: &[Arc<str>]| -> Result<usize, WriteError> {
+		let string_table_size = |strings: &[SmolStr]| -> Result<usize, WriteError> {
 			if strings.len() == 0 {
 				return Ok(0);
 			}
@@ -407,7 +475,7 @@ impl Byml {
 		}
 		writer.write_u32(*container_offsets.get(&root_node).unwrap() as u32);
 
-		let mut write_sorted_string_table = |offset: usize, strings: &[Arc<str>]| {
+		let mut write_sorted_string_table = |offset: usize, strings: &[SmolStr]| {
 			writer.seek(offset);
 			writer.write_u8(DataType::StringTable as u8);
 			write_u24(&mut writer, strings.len() as u32);
@@ -491,7 +559,7 @@ impl Byml {
 	fn write_element(
 		writer: &mut BinaryWriter,
 		value: &Element,
-		strings: &[Arc<str>],
+		strings: &[SmolStr],
 		container_offsets: &HashMap<Container, usize>,
 		long_type_offsets: &IndexMap<LongElement, usize>,
 	) {
@@ -579,15 +647,15 @@ impl Byml {
 }
 
 struct ReadTables {
-	keys: Box<[Arc<str>]>,
-	strings: Box<[Arc<str>]>,
+	keys: Box<[SmolStr]>,
+	strings: Box<[SmolStr]>,
 	found_containers: IndexMap<usize, Container>,
 }
 
 #[derive(Default)]
 struct FirstTraversal {
-	keys: HashSet<Arc<str>>,
-	strings: HashSet<Arc<str>>,
+	keys: HashSet<SmolStr>,
+	strings: HashSet<SmolStr>,
 	long_types: HashSet<LongElement>,
 	containers: HashSet<Container>,
 }
