@@ -1,6 +1,6 @@
 use gpui::{
-	AnyView, App, AppContext, Entity, InteractiveElement, IntoElement,
-	ParentElement, Point, Render, RenderOnce, ScrollHandle, ScrollWheelEvent, SharedString,
+	AnyView, App, AppContext, ElementId, Entity, InteractiveElement, IntoElement, ParentElement,
+	Point, Render, RenderOnce, ScrollHandle, ScrollWheelEvent, SharedString,
 	StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
@@ -119,6 +119,7 @@ impl Render for TabControl {
 			.size_full()
 			.child(
 				div()
+					.id(ElementId::Name(self.base_id.clone()))
 					.h_flex()
 					.w_full()
 					.h_8()
@@ -148,11 +149,11 @@ impl Render for TabControl {
 					})),
 			)
 			.child(
-					self
-						.tabs
-						.get(self.active_tab)
-						.map(|tab: &TabEntry| tab.entity.clone())
-						.unwrap_or_else(|| self.tab_placeholder.clone().into()),
+				self
+					.tabs
+					.get(self.active_tab)
+					.map(|tab: &TabEntry| tab.entity.clone())
+					.unwrap_or_else(|| self.tab_placeholder.clone().into()),
 			)
 	}
 }

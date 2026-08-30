@@ -1,6 +1,5 @@
 use std::{fs, path::PathBuf, sync::LazyLock};
 
-use atomic_refcell::AtomicRefCell;
 use gpui::App;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Whatever};
@@ -39,6 +38,7 @@ impl Config {
 		Ok(config)
 	}
 
+	#[allow(unused)]
 	pub fn save(&mut self) -> Result<(), Whatever> {
 		fs::write(
 			Config::config_path(),
@@ -49,6 +49,7 @@ impl Config {
 }
 impl gpui::Global for Config {}
 
+#[allow(unused)]
 pub trait ConfigAccessor {
 	fn config(&self) -> &Config;
 	fn config_mut(&mut self) -> &mut Config;

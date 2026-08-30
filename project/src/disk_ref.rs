@@ -1,8 +1,8 @@
-use std::{any::type_name, error::Error, fmt, fs, path::Path};
+use std::{any::type_name, fmt, fs, path::Path};
 
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, Whatever, whatever};
+use snafu::{ResultExt, Whatever};
 
 pub trait ProjectAsset: Sized {
 	fn load(path: &Path) -> Result<Self, Whatever>;

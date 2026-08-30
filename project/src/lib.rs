@@ -7,7 +7,6 @@ use std::{
 
 use chrono::{DateTime, Local, Utc};
 use indexmap::IndexMap;
-use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Whatever};
 

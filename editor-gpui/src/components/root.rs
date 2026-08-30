@@ -1,14 +1,14 @@
-use std::{any::TypeId, collections::BTreeMap};
+use std::any::TypeId;
 
 use gpui::{
-	AnyView, App, AppContext, Context, DefiniteLength, Entity, EventEmitter, ParentElement, Render,
-	Styled, Subscription, WeakEntity, Window, div, rgba,
+	AnyView, App, AppContext, Context, DefiniteLength, Entity, ParentElement, Render, SharedString,
+	Styled, Window, div, rgba,
 };
 
 use crate::components::{StyleExt, event::ContextExt, theme::ThemeExt};
 
 pub struct Root {
-	dialog_stack: Vec<AnyView>,
+	dialog_stack: Vec<OpenDialog>,
 	root_view: AnyView,
 }
 
@@ -16,9 +16,9 @@ impl Root {
 	pub fn new(cx: &mut App, view: impl Into<AnyView>) -> Entity<Self> {
 		cx.new(|cx| {
 			cx.bus_subscribe(|root: &mut Self, event: &OpenDialog, _| {
-				root.dialog_stack.push(event.0.clone());
+				root.dialog_stack.push(event.clone());
 			});
-			cx.bus_subscribe(|root: &mut Self, event: &PopDialog, _| {
+			cx.bus_subscribe(|root: &mut Self, _: &PopDialog, _| {
 				root.dialog_stack.pop();
 			});
 			Self {
@@ -45,7 +45,7 @@ impl Root {
 impl Render for Root {
 	fn render(
 		&mut self,
-		window: &mut gpui::Window,
+		_: &mut gpui::Window,
 		cx: &mut gpui::Context<Self>,
 	) -> impl gpui::IntoElement {
 		div()
@@ -59,15 +59,19 @@ impl Render for Root {
 					.children(self.dialog_stack.iter().cloned().map(|dialog| {
 						let dialog = dialog.clone();
 						div()
-						.size_full()
+							.size_full()
 							.child(
 								div()
-									.child(dialog)
+									.bg(cx.theme().pane_bg)
+									.p_2()
+									.child(dialog.0)
+									.child(dialog.1)
+									.gap_2()
 									.h(DefiniteLength::Fraction(3.0 / 4.0))
 									.w(DefiniteLength::Fraction(3.0 / 4.0)),
 							)
 							.inset_0()
-							.bg(rgba(0x00000030))
+							.bg(rgba(0x00000060))
 							.v_flex()
 							.items_center()
 							.justify_center()
@@ -78,10 +82,11 @@ impl Render for Root {
 	}
 }
 
-pub struct OpenDialog(AnyView);
+#[derive(Clone)]
+pub struct OpenDialog(SharedString, AnyView);
 impl OpenDialog {
-	pub fn new(view: impl Into<AnyView>) -> Self {
-		Self(view.into())
+	pub fn new(title: impl Into<SharedString>, view: impl Into<AnyView>) -> Self {
+		Self(title.into(), view.into())
 	}
 }
 pub struct PopDialog;

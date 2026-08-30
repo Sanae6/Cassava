@@ -1,7 +1,7 @@
 use std::{fs, path::Path};
 
 use cassava::{
-	byaml::{self, Dictionary, Element},
+	byaml::{self, Element},
 	util::{ArcAtomicRefCellExt, BinaryReader},
 };
 use snafu::{OptionExt, ResultExt, Whatever, ensure_whatever, whatever};
@@ -103,7 +103,7 @@ impl Stage {
 				.filter(|(file_name, _)| *file_name == design_byml_name)
 				.map(|(file_name, data)| {
 					(
-						file_name.to_owned(),
+						file_name.into(),
 						DiskRef {
 							path: file_name.into(),
 							value: Some(data.to_vec()),
@@ -139,7 +139,7 @@ impl Stage {
 					.map(|tickets| {
 						tickets
 							.as_array()
-							.whatever_context("no default camera ticket was found")
+							.whatever_context("expected entrance ticket list to be an array")
 					})
 					.transpose()?;
 
@@ -155,11 +155,11 @@ impl Stage {
 					.unwrap_or_default();
 
 				let object_tickets = camera_param
-					.get("StartTickets")
+					.get("Tickets")
 					.map(|tickets| {
 						tickets
 							.as_array()
-							.whatever_context("no default camera ticket was found")
+							.whatever_context("expected camera ticket list to be an array")
 					})
 					.transpose()?;
 				let object_cameras = object_tickets
@@ -193,6 +193,7 @@ impl Stage {
 			design_files,
 			default_camera,
 			entrance_cameras,
+			unassigned_cameras: Vec::new(),
 			koopa_freerunning: Default::default(),
 		})
 	}

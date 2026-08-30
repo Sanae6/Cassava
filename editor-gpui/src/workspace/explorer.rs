@@ -1,9 +1,4 @@
-use std::{any::TypeId, cell::RefCell, ops::DerefMut, rc::Rc};
-
-use gpui::{
-	Action, App, DefiniteLength, ElementId, Entity, EventEmitter, Render, Subscription, div,
-	prelude::*, px, rgb,
-};
+use gpui::{App, Entity, Render, div, prelude::*, px, rems};
 
 use crate::{
 	components::{
@@ -13,8 +8,8 @@ use crate::{
 		root::OpenDialog,
 		tree::{TreeItem, TreeState, tree},
 	},
-	project::{Project, ProjectAccessor},
-	workspace::{ProjectUpdate, Workspace, import_stage::ImportStage},
+	project::ProjectAccessor,
+	workspace::{ProjectUpdate, import_stage::ImportStage},
 };
 
 pub struct Explorer {
@@ -23,13 +18,10 @@ pub struct Explorer {
 
 impl Explorer {
 	pub fn new(cx: &mut App) -> Entity<Explorer> {
-		let tree = cx.new(|cx| TreeState::new());
+		let mut tree = TreeState::new();
 
 		{
-			let tree = tree.clone();
-			tree.update(cx, |tree, cx| {
-				tree.set_items(Self::build_tree_state(cx));
-			});
+			tree.set_items(Self::build_tree_state(cx));
 			// root.push(TreeItem::new("text", "Text"));
 			// root.push(TreeItem::new("objects", "Objects"));
 		}
@@ -40,7 +32,9 @@ impl Explorer {
 					.update(cx, |tree, cx| tree.set_items(Self::build_tree_state(cx)))
 			});
 
-			Self { tree }
+			Self {
+				tree: tree.build(cx, rems(2.0)),
+			}
 		})
 	}
 
@@ -63,22 +57,17 @@ impl Render for Explorer {
 	fn render(
 		&mut self,
 		_: &mut gpui::Window,
-		cx: &mut gpui::Context<Self>,
+		_: &mut gpui::Context<Self>,
 	) -> impl gpui::IntoElement {
-		let tree_entity = self.tree.clone();
 		div()
 			.v_flex()
-			.border_2()
-			.border_color(rgb(0xFF0000))
-			// .items_stretch()
-			// .self_stretch()
 			.size_full()
 			.child(
 				Button::new("import-stage")
-					.label("Import Stage")
+					.label("Import stage")
 					.on_click(|_, _, cx| {
 						let import_stage = cx.new(|cx| ImportStage::new(cx));
-						cx.bus_emit(OpenDialog::new(import_stage));
+						cx.bus_emit(OpenDialog::new("Import stage", import_stage));
 					}),
 			)
 			.child(
@@ -86,7 +75,6 @@ impl Render for Explorer {
 					Button::new(entry.id())
 						.pl(px(16.) * entry.depth() + px(12.))
 						.child(entry.label())
-						.size_full()
 				}), // .context_menu(|_, entry, popup, _, _| match entry.item().id.as_str() {
 				    // 	"stages" => popup.item(
 				    // 		PopupMenuItem::new("Import stage").on_click(|_, window, cx| {

@@ -14,3 +14,4 @@ atomic_refcell = { workspace = true }
 cassava-project = { version = "0.1.0", path = "../project" }
 cassava = { version = "0.1.0", path = "../cassava" }
 heapless = "0.9.3"
+ouroboros = "0.18.5"

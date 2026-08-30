@@ -1,14 +1,13 @@
-use std::{path::PathBuf, rc::Rc};
+use std::path::PathBuf;
 
 use cassava_project::ALProject;
 use gpui::{
-	AbsoluteLength, App, DefiniteLength, ListState, Pixels, Rems, SharedString, StyledText, div,
-	list, prelude::*, px, rems,
+	App, DefiniteLength, ListState, SharedString, StyledText, div, list, prelude::*, px, rgb,
 };
 
 use crate::{
 	components::{StyleExt, button::Button, root::Root, theme::ThemeExt},
-	config::{Config, ConfigAccessor},
+	config::ConfigAccessor,
 	project::Project,
 	workspace::Workspace,
 };
@@ -20,8 +19,8 @@ pub struct LandingPage {
 #[derive(Debug)]
 struct ExistingProject {
 	name: SharedString,
-	exists: bool,
-	last_opened: SharedString,
+	_exists: bool,
+	_last_opened: SharedString,
 	path_string: SharedString,
 	path: PathBuf,
 }
@@ -36,8 +35,8 @@ impl LandingPage {
 			.map(|project_dir| match ALProject::peek(project_dir) {
 				Ok(peek) => ExistingProject {
 					name: peek.name.into(),
-					exists: true,
-					last_opened: format!("Last opened: {}", peek.last_opened).into(),
+					_exists: true,
+					_last_opened: format!("Last opened: {}", peek.last_opened).into(),
 					path: project_dir.clone(),
 					path_string: project_dir.to_string_lossy().into(),
 				},
@@ -51,8 +50,8 @@ impl LandingPage {
 							.unwrap_or_default()
 							.to_string_lossy()
 							.into(),
-						exists: false,
-						last_opened: "Last opened: unknown".into(),
+						_exists: false,
+						_last_opened: "Last opened: unknown".into(),
 						path: project_dir.clone(),
 						path_string: project_dir.to_string_lossy().into(),
 					}
@@ -91,7 +90,7 @@ impl Render for LandingPage {
 					.child(
 						list(self.project_list.clone(), move |index, _, cx| {
 							let p_entity = entity.clone();
-							cx.read_entity(&entity, move |page, cx| {
+							cx.read_entity(&entity, move |page, _| {
 								let project: &ExistingProject = page.projects.get(index).unwrap();
 								div()
 									.size_full()
@@ -109,7 +108,7 @@ impl Render for LandingPage {
 														div().v_flex().child(StyledText::new(&project.name)).child(
 															div()
 																.child(project.path_string.clone())
-																.text_color(cx.theme().bg),
+																.text_color(rgb(0xC0C0C0)),
 														),
 													)
 													.child(div().child("super mario").text_right()),

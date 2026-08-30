@@ -1,30 +1,28 @@
 mod import;
 
-use std::{any::type_name_of_val, fs, path::Path, sync::Arc};
+use std::{fs, path::Path};
 
-use cassava::{byaml, util::BinaryReader};
 use glam::Vec3;
 use indexmap::IndexMap;
-use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 use smol_str::SmolStr;
-use snafu::{OptionExt, ResultExt, Whatever, ensure_whatever, whatever};
-use tracing::warn;
+use snafu::{ResultExt, Whatever};
 
-use crate::{DiskRef, ProjectAsset, util::load_szs};
+use crate::{DiskRef, ProjectAsset};
 
 new_key_type! { pub struct ObjectKey; }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Stage {
 	pub objects: SlotMap<ObjectKey, Object>,
-	pub map_lists: IndexMap<String, Node>,
-	pub sound_lists: IndexMap<String, Node>,
-	pub design_lists: IndexMap<String, Node>,
-	pub design_files: IndexMap<String, DiskRef<Vec<u8>>>,
+	pub map_lists: IndexMap<SmolStr, Node>,
+	pub sound_lists: IndexMap<SmolStr, Node>,
+	pub design_lists: IndexMap<SmolStr, Node>,
+	pub design_files: IndexMap<SmolStr, DiskRef<Vec<u8>>>,
 	pub entrance_cameras: Vec<Camera>,
 	pub default_camera: Camera,
+	pub unassigned_cameras: Vec<(SmolStr, Camera)>,
 	pub koopa_freerunning: (),
 }
 

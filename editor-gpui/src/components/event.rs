@@ -4,7 +4,7 @@ use std::{
 	ops::DerefMut,
 };
 
-use gpui::{AnyEntity, AnyWeakEntity, App, BorrowAppContext, Context, Entity, WeakEntity};
+use gpui::{AnyEntity, AnyWeakEntity, App, BorrowAppContext, Context, Entity};
 
 pub struct EventBus {
 	handlers: BTreeMap<TypeId, Vec<(AnyWeakEntity, Box<dyn Fn(&dyn Any, &mut App)>)>>,

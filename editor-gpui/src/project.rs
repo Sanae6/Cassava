@@ -1,7 +1,5 @@
-use std::ops::{Deref, DerefMut};
-
 use cassava_project::ALProject;
-use gpui::{App, Context, SharedString};
+use gpui::{App, SharedString};
 
 pub struct Project {
 	project: ALProject,

@@ -6,15 +6,19 @@ use cassava::{
 	util::{ArcAtomicRefCellExt, BinaryReader},
 	yaz0,
 };
-use gpui::{App, Entity, EventEmitter, ListState, div, prelude::*, px};
+use gpui::{App, Entity, div, prelude::*, px};
 
 use crate::{
 	components::{
-		StyleExt, button::Button, event::AppEventExt, root::PopDialog, tree::{TreeItem, TreeState, tree}
+		StyleExt,
+		button::Button,
+		event::AppEventExt,
+		root::PopDialog,
+		tree::{TreeItem, TreeState, tree},
 	},
 	config::ConfigAccessor,
 	project::ProjectAccessor,
-	workspace::{ProjectUpdate, Workspace},
+	workspace::ProjectUpdate,
 };
 
 pub struct ImportStage {
@@ -58,7 +62,9 @@ impl ImportStage {
 		}
 
 		Self {
-			tree_state: cx.new(|_| TreeState::new().items(items.into_iter())),
+			tree_state: TreeState::new()
+				.items(items.into_iter())
+				.build(cx, px(32.0)),
 		}
 	}
 }
@@ -79,8 +85,7 @@ impl Render for ImportStage {
 				Button::new(entry.label())
 					.pl(px(16.) * entry.depth() + px(12.))
 					.child(entry.label())
-			})
-			.border_debug(0xFF))
+			}))
 			.child(
 				div()
 					.h_flex()

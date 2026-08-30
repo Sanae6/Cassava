@@ -1,6 +1,7 @@
-use gpui::{App, AppContext, Entity, ParentElement, Render, Styled, div, px};
+use gpui::{App, AppContext, Entity, ParentElement, Render, Styled, div, px, rems};
 
 use crate::components::{
+	StyleExt,
 	button::Button,
 	theme::ThemeExt,
 	tree::{TreeItem, TreeState, tree},
@@ -12,14 +13,15 @@ pub struct TreeTest {
 impl TreeTest {
 	pub fn new(cx: &mut App) -> Self {
 		Self {
-			tree: cx.new(|_| {
-				TreeState::new().items((1..=3).map(|i1| {
-					TreeItem::new(i1.to_string(), i1.to_string()).children((1..=3).map(|i2| {
-						TreeItem::new(format!("{i1}-{i2}"), i2.to_string())
-							.children((1..=3).map(|i3| TreeItem::new(format!("{i1}-{i2}-{i3}"), i3.to_string())))
+			tree: TreeState::new()
+				.items((1..=3).map(|i1| {
+					TreeItem::new(i1.to_string(), format!("l1 - {i1}")).children((1..=3).map(|i2| {
+						TreeItem::new(format!("{i1}-{i2}"), format!("l2 - {i2}")).children(
+							(1..=3).map(|i3| TreeItem::new(format!("{i1}-{i2}-{i3}"), format!("l3 - {i3}"))),
+						)
 					}))
 				}))
-			}),
+				.build(cx, rems(2.0)),
 		}
 	}
 }

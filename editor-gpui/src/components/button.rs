@@ -1,10 +1,10 @@
 use gpui::{
 	AnyElement, Div, InteractiveElement, Interactivity, IntoElement, ParentElement, RenderOnce,
 	SharedString, Stateful, StatefulInteractiveElement, StyleRefinement, Styled, div,
-	prelude::FluentBuilder, rgb,
+	prelude::FluentBuilder, white,
 };
 
-use crate::components::StyleExt;
+use crate::components::{StyleExt, theme::ThemeExt};
 
 #[derive(IntoElement)]
 pub struct Button {
@@ -62,7 +62,7 @@ impl InteractiveElement for Button {
 impl StatefulInteractiveElement for Button {}
 
 impl RenderOnce for Button {
-	fn render(mut self, _: &mut gpui::Window, _: &mut gpui::App) -> impl IntoElement {
+	fn render(mut self, _: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
 		let style = self.base.style().clone();
 		self
 			.base
@@ -74,16 +74,16 @@ impl RenderOnce for Button {
 			.px_2()
 			// .border_1()
 			// .border_color(rgb(0xC0C0C0))
-			.bg(rgb(0x303030))
-			.text_color(rgb(0xFFFFFF))
-			.hover(|div| div.bg(rgb(0x404040)))
-			.active(|div| div.bg(rgb(0x505050)))
-			.map(|div| match self.forced_state {
-				Some(ButtonState::Normal) => div.bg(rgb(0x303030)),
-				Some(ButtonState::Hovered) => div.bg(rgb(0x404040)),
-				Some(ButtonState::Clicked) => div.bg(rgb(0x505050)),
-				None => div,
-			})
+			.bg(cx.theme().button_normal)
+			.text_color(white())
+			.hover(|div| div.bg(cx.theme().button_hover))
+			.active(|div| div.bg(cx.theme().button_active))
+			// .map(|div| match self.forced_state {
+			// 	Some(ButtonState::Normal) => div.bg(cx.theme().button_normal),
+			// 	Some(ButtonState::Hovered) => div.bg(cx.theme().button_hover),
+			// 	Some(ButtonState::Clicked) => div.bg(cx.theme().button_active),
+			// 	None => div,
+			// })
 			.when_some(self.label, |div, label| div.child(label))
 			.children(self.children)
 			.refine_style(style)
