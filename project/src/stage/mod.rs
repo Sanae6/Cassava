@@ -70,7 +70,7 @@ struct Scenarios(u16);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entity {
 	/// An entity's "unique" id. This can be used by the game in certain hardcoded situations,
-	/// and is not actually unique. See [note 2](https://smo.wiki/w/index.php?title=Stage_archive&oldid=12386#cite_note-leftover-2)
+	/// and is not actually unique. See [note 1](https://smo.wiki/w/index.php?title=Stage_archive&oldid=12386#cite_note-1)
 	/// for more information about id uniqueness.
 	pub id: SmolStr,
 	/// The name used by a factory to instantiate the entity. (`ParameterConfigName`)
