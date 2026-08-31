@@ -7,6 +7,7 @@ pub struct Theme {
 	pub button_normal: Rgba,
 	pub button_hover: Rgba,
 	pub button_active: Rgba,
+	pub text_disabled: Rgba,
 }
 
 impl Theme {
@@ -17,6 +18,7 @@ impl Theme {
 			button_normal: rgb(0x303030),
 			button_hover: rgb(0x404040),
 			button_active: rgb(0x505050),
+			text_disabled: rgb(0x808080),
 		});
 	}
 }

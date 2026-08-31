@@ -1,3 +1,4 @@
+use cassava::yaz0;
 use clap::{Parser, Subcommand, ValueEnum};
 // use eyre::Result;
 use cassava::sarc::{self, Reader, Writer};
@@ -47,7 +48,11 @@ fn main() -> Result<(), sarc::Error> {
 
 	match args.command {
 		Commands::Read { in_path, out_path } => {
-			let in_data = fs::read(in_path).expect("could not read file");
+			let mut in_data = fs::read(in_path).expect("could not read file");
+
+			if in_data.starts_with(b"Yaz0") {
+				in_data = yaz0::decompress(&in_data).expect("failed to decompress file").0;
+			}
 
 			let reader = Reader::new(in_data)?;
 

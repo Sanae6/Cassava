@@ -7,6 +7,7 @@ use cassava::{
 	yaz0,
 };
 use gpui::{App, Entity, div, prelude::*, px};
+use snafu::Report;
 
 use crate::{
 	components::{
@@ -94,9 +95,7 @@ impl Render for ImportStage {
 					.child(
 						Button::new("close")
 							.label("Cancel")
-							// .with_variant(ButtonVariant::Secondary)
 							.on_click(move |_, _, cx| {
-								// window.close_dialog(cx);
 								cx.bus_emit(PopDialog);
 							}),
 					)
@@ -104,13 +103,13 @@ impl Render for ImportStage {
 						Button::new("import")
 							.label("Import")
 							// .with_variant(ButtonVariant::Primary)
-							// .disabled(
-							// 	self
-							// 		.tree_state
-							// 		.read(cx)
-							// 		.selected_entry()
-							// 		.is_none_or(|entry| entry.depth() == 0),
-							// )
+							.disabled(
+								self
+									.tree_state
+									.read(cx)
+									.selected()
+									.is_none_or(|entry| entry.depth() == 0),
+							)
 							.on_click(window.listener_for(&view, move |view, _, _, cx| {
 								let Some(entry) = view.tree_state.read(cx).selected() else {
 									return;
@@ -123,10 +122,10 @@ impl Render for ImportStage {
 								let romfs_dir = cx.config().default_romfs_dir.as_ref().unwrap().clone();
 								println!("Loading stage {stage_name} from {romfs_dir:?}");
 								if let Err(err) = cx.al_project_mut().import_stage(&romfs_dir, &stage_name) {
+									let err = Report::from_error(err);
 									eprintln!("{err}");
 									panic!()
 								};
-								println!("dispatching confirm");
 
 								cx.bus_emit(ProjectUpdate);
 								cx.bus_emit(PopDialog);

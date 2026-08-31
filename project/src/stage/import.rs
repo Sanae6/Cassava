@@ -9,7 +9,7 @@ use tracing::warn;
 
 use crate::{
 	DiskRef,
-	stage::{Camera, Stage, StageParameter},
+	stage::{Camera, CameraId, CameraParameter, Folder, Stage, SuffixCamera},
 	util::load_szs,
 };
 
@@ -115,90 +115,137 @@ impl Stage {
 			Default::default()
 		};
 
-		let (default_camera, entrance_cameras, object_cameras) =
-			if let Some(camera_param) = map_archive.get_file("CameraParam.byml") {
-				let camera_param = byaml::Byml::read(&mut BinaryReader::new(camera_param))
-					.whatever_context("failed to read camera param byml")?;
-				let camera_param = camera_param
-					.as_dictionary()
-					.whatever_context("expected dictionary at camera param root")?
-					.into_borrow();
+		let (default_camera, entrance_cameras, mut object_cameras): (
+			SuffixCamera,
+			Vec<SuffixCamera>,
+			Vec<(CameraId, Camera)>,
+		) = if let Some(camera_param) = map_archive.get_file("CameraParam.byml") {
+			let camera_param = byaml::Byml::read(&mut BinaryReader::new(camera_param))
+				.whatever_context("failed to read camera param byml")?;
+			let camera_param = camera_param
+				.as_dictionary()
+				.whatever_context("expected dictionary at camera param root")?
+				.into_borrow();
 
-				let default_tickets = camera_param
-					.get("DefaultTickets")
-					.and_then(Element::as_array)
-					.whatever_context("no default camera ticket was found")?
-					.into_borrow();
-				ensure_whatever!(
-					default_tickets.len() == 1,
-					"more than one default camera ticket was found"
-				);
-				let default_camera = Self::import_camera(&default_tickets[0])?;
-				let entrance_tickets = camera_param
-					.get("StartTickets")
-					.map(|tickets| {
-						tickets
-							.as_array()
-							.whatever_context("expected entrance ticket list to be an array")
-					})
-					.transpose()?;
+			let default_tickets = camera_param
+				.get("DefaultTickets")
+				.and_then(Element::as_array)
+				.whatever_context("no default camera ticket was found")?
+				.into_borrow();
+			ensure_whatever!(
+				default_tickets.len() == 1,
+				"more than one default camera ticket was found"
+			);
+			let (default_camera_id, default_camera) = Self::import_camera(&default_tickets[0])?;
+			ensure_whatever!(
+				default_camera_id.object.is_none(),
+				"default camera has an object id"
+			);
+			let default_camera_suffix = default_camera_id
+				.suffix
+				.whatever_context("default camera has no suffix")?;
 
-				let entrance_cameras = entrance_tickets
-					.map(|tickets| {
-						tickets
-							.into_borrow()
-							.iter()
-							.map(Self::import_camera)
-							.collect::<Result<Vec<_>, _>>()
-					})
-					.transpose()?
-					.unwrap_or_default();
+			let entrance_tickets = camera_param
+				.get("StartTickets")
+				.map(|tickets| {
+					tickets
+						.as_array()
+						.whatever_context("expected entrance ticket list to be an array")
+				})
+				.transpose()?;
 
-				let object_tickets = camera_param
-					.get("Tickets")
-					.map(|tickets| {
-						tickets
-							.as_array()
-							.whatever_context("expected camera ticket list to be an array")
-					})
-					.transpose()?;
-				let object_cameras = object_tickets
-					.map(|tickets| {
-						tickets
-							.into_borrow()
-							.iter()
-							.map(Self::import_camera)
-							.collect::<Result<Vec<_>, _>>()
-					})
-					.transpose()?
-					.unwrap_or_default();
-				(default_camera, entrance_cameras, object_cameras)
-			} else {
-				(
-					Camera {
+			let entrance_cameras = entrance_tickets
+				.map(|tickets| {
+					tickets
+						.into_borrow()
+						.iter()
+						.map(|camera| {
+							Self::import_camera(camera).and_then(|(id, camera)| {
+								ensure_whatever!(id.object.is_none(), "entrance camera has an object id");
+								let suffix = id
+									.suffix
+									.whatever_context("entrance camera has no suffix")?;
+								Ok(SuffixCamera { suffix, camera })
+							})
+						})
+						.collect::<Result<Vec<_>, _>>()
+				})
+				.transpose()?
+				.unwrap_or_default();
+
+			let object_tickets = camera_param
+				.get("Tickets")
+				.map(|tickets| {
+					tickets
+						.as_array()
+						.whatever_context("expected camera ticket list to be an array")
+				})
+				.transpose()?;
+			let object_cameras = object_tickets
+				.map(|tickets| {
+					tickets
+						.into_borrow()
+						.iter()
+						.map(Self::import_camera)
+						.collect::<Result<Vec<_>, _>>()
+				})
+				.transpose()?
+				.unwrap_or_default();
+			(
+				SuffixCamera {
+					suffix: default_camera_suffix,
+					camera: default_camera,
+				},
+				entrance_cameras,
+				object_cameras,
+			)
+		} else {
+			(
+				SuffixCamera {
+					suffix: "Default".into(),
+					camera: Camera {
 						factory_name: "制限付きフォロー".into(),
-						suffix: None,
 						parameters: Default::default(),
 					},
-					Default::default(),
-					Default::default(),
-				)
-			};
+				},
+				Default::default(),
+				Default::default(),
+			)
+		};
+
+		let global_cameras = object_cameras
+			.extract_if(.., |(id, _)| id.suffix.is_some() && id.object.is_none())
+			.map(|(id, camera)| {
+				Ok(SuffixCamera {
+					suffix: id.suffix.expect("id is suppose to be Some"),
+					camera,
+				})
+			})
+			.collect::<Result<_, _>>()?;
+
+		map_byml.into_borrow()
 
 		Ok(Self {
-			objects: Default::default(),
-			map_lists: Default::default(),
-			sound_lists: Default::default(),
-			design_lists: Default::default(),
+			entities: Default::default(),
+			root: Folder {
+				name: stage_name.into(),
+				scenarios: None,
+				children: vec![],
+			},
 			design_files,
 			default_camera,
 			entrance_cameras,
-			unassigned_cameras: Vec::new(),
+			global_cameras,
+			unused_cameras: Default::default(),
 			koopa_freerunning: Default::default(),
 		})
 	}
 
-	fn import_camera(camera: &Element) -> Result<Camera, Whatever> {
+	fn import_list() -> Result<(), ()> {
+		Ok(())
+	}
+
+	fn import_camera(camera: &Element) -> Result<(CameraId, Camera), Whatever> {
 		let camera = camera
 			.as_dictionary()
 			.whatever_context("expected camera ticket to be a dictionary")?
@@ -216,13 +263,23 @@ impl Stage {
 			.whatever_context("camera factory name was not a string")?
 			.into();
 
-		let suffix = camera
-			.get("Class")
+		let id = camera
+			.get("Id")
 			.whatever_context("failed to find camera id")?
 			.as_dictionary()
 			.whatever_context("expected camera id to be a dictionary")?
-			.into_borrow()
-			.get("Name")
+			.into_borrow();
+		let object = id
+			.get("ObjId")
+			.map(|name| {
+				name
+					.as_string()
+					.whatever_context("camera object id was not a string")
+			})
+			.transpose()?
+			.into();
+		let suffix = id
+			.get("Suffix")
 			.map(|name| {
 				name
 					.as_string()
@@ -234,31 +291,46 @@ impl Stage {
 		let param = camera
 			.get("Param")
 			.whatever_context("failed to find camera params")?;
+
+		fn read_param(param: &Element) -> Result<CameraParameter, Whatever> {
+			Ok(match param {
+				Element::String(value) => CameraParameter::String(value.clone()),
+				Element::Boolean(value) => CameraParameter::Boolean(*value),
+				Element::I32(value) => CameraParameter::I32(*value),
+				Element::F32(value) => CameraParameter::F32(*value),
+				Element::Dictionary(value) => CameraParameter::Dictionary(
+					value
+						.borrow()
+						.iter()
+						.map(|(name, param)| Ok((name.clone(), read_param(param)?)))
+						.collect::<Result<_, _>>()?,
+				),
+				Element::Array(value) => CameraParameter::Array(
+					value
+						.borrow()
+						.iter()
+						.map(read_param)
+						.collect::<Result<_, _>>()?,
+				),
+				_ => whatever!("invalid camera parm type {:?}", param.data_type()),
+			})
+		}
 		let parameters = match param {
 			Element::Dictionary(params) => params
 				.borrow()
 				.iter()
-				.map(|(name, param)| {
-					Ok((
-						name.clone(),
-						match param {
-							Element::String(value) => StageParameter::String(value.clone()),
-							Element::Boolean(value) => StageParameter::Boolean(*value),
-							Element::I32(value) => StageParameter::I32(*value),
-							Element::F32(value) => StageParameter::F32(*value),
-							_ => whatever!("invalid type {:?} for param {name}", param.data_type()),
-						},
-					))
-				})
+				.map(|(name, param)| Ok((name.clone(), read_param(param)?)))
 				.collect::<Result<_, _>>()?,
 			Element::Null => Default::default(),
 			_ => whatever!("unexpected type for camera param element"),
 		};
 
-		Ok(Camera {
-			factory_name,
-			suffix,
-			parameters,
-		})
+		Ok((
+			CameraId { object, suffix },
+			Camera {
+				factory_name,
+				parameters,
+			},
+		))
 	}
 }

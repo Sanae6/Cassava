@@ -7,16 +7,19 @@ use std::{
 
 use chrono::{DateTime, Local, Utc};
 use indexmap::IndexMap;
+use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Whatever};
 
-use crate::stage::Stage;
+use crate::{stage::{Stage, database::EntityDatabase}, system::SystemData};
 
 pub use disk_ref::{DiskRef, ProjectAsset};
+pub use smol_str;
 
 mod disk_ref;
 pub mod stage;
 mod util;
+pub mod system;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ALProject {
@@ -25,13 +28,14 @@ pub struct ALProject {
 	pub name: String,
 	pub last_opened: DateTime<Utc>,
 	pub stages: IndexMap<String, DiskRef<Stage>>,
+	pub entity_database: DiskRef<EntityDatabase>,
 	objects: IndexMap<String, ()>,
-	effects: IndexMap<String, String>,
-	layouts: IndexMap<String, String>,
-	event_flows: IndexMap<String, String>,
-	text: IndexMap<String, String>,
-	shaders: IndexMap<String, String>,
-	system: IndexMap<String, String>,
+	effects: IndexMap<String, ()>,
+	layouts: IndexMap<String, ()>,
+	event_flows: IndexMap<String, ()>,
+	text: IndexMap<String, ()>,
+	shaders: IndexMap<String, ()>,
+	system: DiskRef<SystemData>,
 }
 
 impl ALProject {
@@ -46,13 +50,20 @@ impl ALProject {
 			last_opened: Local::now().to_utc(),
 			root: directory.to_owned(),
 			stages: IndexMap::new(),
+			entity_database: DiskRef {
+				path: RelativePathBuf::new(),
+				value: Some(EntityDatabase::default()),
+			},
 			objects: IndexMap::new(),
 			effects: IndexMap::new(),
 			layouts: IndexMap::new(),
 			event_flows: IndexMap::new(),
 			text: IndexMap::new(),
 			shaders: IndexMap::new(),
-			system: IndexMap::new(),
+			system: DiskRef {
+				path: RelativePathBuf::new(),
+				value: Some(SystemData::default()),
+			},
 		};
 		fs::write(
 			directory.join(Self::PROJECT_FILE),

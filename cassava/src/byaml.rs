@@ -1,7 +1,6 @@
 use std::{
 	backtrace::Backtrace,
 	collections::{HashMap, HashSet},
-	ops::Index,
 	ptr,
 	sync::Arc,
 };
@@ -158,11 +157,18 @@ macro_rules! accessors {
 						}
 					}
 
-					pub fn [<get_ $name:snake _array>](&self, index: usize) -> Option<$ty> {
+					pub fn [<unwrap_ $name:snake>](&self) -> $ty {
+						match self {
+							Element::$name(value) => value.clone(),
+							_ => panic!("expected {}, got {:?}", stringify!($ty), self.data_type())
+						}
+					}
+
+					pub fn [<get_index_ $name:snake>](&self, index: usize) -> Option<$ty> {
 						self.as_array()?.borrow().get(index)?.[<as_ $name:snake>]()
 					}
 
-					pub fn [<get_ $name:snake _dict>](&self, key: &str) -> Option<$ty> {
+					pub fn [<get_key_ $name:snake>](&self, key: &str) -> Option<$ty> {
 						self.as_dictionary()?.borrow().get(key)?.[<as_ $name:snake>]()
 					}
 				)+
@@ -201,7 +207,8 @@ impl PartialEq for Element {
 			(Self::I64(l0), Self::I64(r0)) => l0 == r0,
 			(Self::U64(l0), Self::U64(r0)) => l0 == r0,
 			(Self::F64(l0), Self::F64(r0)) => OrderedFloat(*l0) == OrderedFloat(*r0),
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+			(Self::Null, Self::Null) => true,
+			_ => false,
 		}
 	}
 }

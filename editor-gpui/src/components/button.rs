@@ -33,12 +33,20 @@ impl Button {
 		self.forced_state = Some(forced_state);
 		self
 	}
+
+	pub fn disabled(mut self, disabled: bool) -> Self {
+		if disabled {
+			self.forced_state = Some(ButtonState::Disabled)
+		}
+		self
+	}
 }
 
 pub enum ButtonState {
 	Normal,
 	Hovered,
 	Clicked,
+	Disabled,
 }
 
 impl Styled for Button {
@@ -78,12 +86,13 @@ impl RenderOnce for Button {
 			.text_color(white())
 			.hover(|div| div.bg(cx.theme().button_hover))
 			.active(|div| div.bg(cx.theme().button_active))
-			// .map(|div| match self.forced_state {
-			// 	Some(ButtonState::Normal) => div.bg(cx.theme().button_normal),
-			// 	Some(ButtonState::Hovered) => div.bg(cx.theme().button_hover),
-			// 	Some(ButtonState::Clicked) => div.bg(cx.theme().button_active),
-			// 	None => div,
-			// })
+			.map(|div| match self.forced_state {
+				Some(ButtonState::Normal) => div.bg(cx.theme().button_normal),
+				Some(ButtonState::Hovered) => div.bg(cx.theme().button_hover),
+				Some(ButtonState::Clicked) => div.bg(cx.theme().button_active),
+				Some(ButtonState::Disabled) => div.text_color(cx.theme().text_disabled).bg(cx.theme().button_normal),
+				None => div,
+			})
 			.when_some(self.label, |div, label| div.child(label))
 			.children(self.children)
 			.refine_style(style)
