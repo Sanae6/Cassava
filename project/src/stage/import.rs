@@ -1,15 +1,16 @@
-use std::{fs, path::Path};
+use std::{collections::HashMap, fs, path::Path};
 
 use cassava::{
-	byaml::{self, Element},
-	util::{ArcAtomicRefCellExt, BinaryReader},
+	byaml::{self, Array, Element},
+	util::{ArcAtomicRef, ArcAtomicRefCellExt, BinaryReader},
 };
+use indexmap::IndexMap;
 use snafu::{OptionExt, ResultExt, Whatever, ensure_whatever, whatever};
 use tracing::warn;
 
 use crate::{
 	DiskRef,
-	stage::{Camera, CameraId, CameraParameter, Folder, Stage, SuffixCamera},
+	stage::{Camera, CameraId, CameraParameter, Folder, Scenarios, Stage, SuffixCamera},
 	util::load_szs,
 };
 
@@ -223,7 +224,7 @@ impl Stage {
 			})
 			.collect::<Result<_, _>>()?;
 
-		map_byml.into_borrow()
+		map_byml.into_borrow();
 
 		Ok(Self {
 			entities: Default::default(),
@@ -241,7 +242,30 @@ impl Stage {
 		})
 	}
 
-	fn import_list() -> Result<(), ()> {
+	fn import_placement_file(array: &Array) -> Result<(), Whatever> {
+		let objects = IndexMap::new();
+		let layer_scenarios = HashMap::new();
+		ensure_whatever!(
+			array.len() <= 16,
+			"up to 16 scenarios in one file are supported"
+		);
+		for (scenario_no, scenario) in array.iter().enumerate() {
+			let scenario = scenario
+				.as_dictionary()
+				.whatever_context("scenario list map must be a dictionary")?
+				.into_borrow();
+
+			for (list_name, list) in scenario.iter() {
+				let list = list
+					.as_array()
+					.whatever_context("placement list must be an array")?
+					.into_borrow();
+
+				for object in list.iter() {
+					
+				}
+			}
+		}
 		Ok(())
 	}
 

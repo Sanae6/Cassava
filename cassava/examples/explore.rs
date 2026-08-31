@@ -18,7 +18,7 @@ use smol_str::SmolStr;
 
 fn main() {
 	let location = args().nth(1).unwrap();
-	let mut object_to_placement = HashMap::new();
+	// let mut object_to_placement = HashMap::new();
 	let dir = fs::read_dir(location).unwrap();
 	dir.for_each(|x| {
 		let y = x.unwrap();

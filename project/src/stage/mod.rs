@@ -1,3 +1,5 @@
+//! The stage file format, used to build [stage archives](https://smo.wiki/Stage_archive) for the final build.
+
 pub mod database;
 mod import;
 
@@ -17,30 +19,34 @@ new_key_type! { pub struct EntityKey; }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Stage {
+	/// The map of all entities in the stage.
 	pub entities: SlotMap<EntityKey, Entity>,
-	// pub map_lists: IndexMap<SmolStr, Vec<Node>>,
-	// pub sound_lists: IndexMap<SmolStr, Vec<Node>>,
-	// pub design_lists: IndexMap<SmolStr, Vec<Node>>,
+	/// The root of the stage hierarchy.
 	pub root: Folder,
-	pub design_files: IndexMap<SmolStr, DiskRef<Vec<u8>>>,
 	/// The lone `DefaultTickets` camera and its suffix (generally set to "Default")
 	pub default_camera: SuffixCamera,
-	// `StartTickets` cameras.
+	/// `StartTickets` cameras, used as the initial camera ticket before the player moves.
 	pub entrance_cameras: Vec<SuffixCamera>,
-	// `Tickets` cameras who are not bound to an entity
+	/// `Tickets` cameras that are not bound to an entity.
 	pub global_cameras: Vec<SuffixCamera>,
-	// `Tickets` cameras who are bound to an entity that does not exist in the stage (import only)
+	/// `Tickets` cameras that are bound to an entity that does not exist in the stage (import only)
 	pub unused_cameras: IndexMap<SmolStr, (Option<SmolStr>, Camera)>,
+	/// Koopa Freerunning
 	pub koopa_freerunning: (),
-	// todo: evaluate graphics stuff (aamp/graphicsarea/graphicsquality/etc.)
+	// todo: evaluate everything that goes into design archives (aamp/graphicsarea/graphicsquality/etc.)
+	// this is currently a temporary solution storing for graphics files like cubemaps and
+	// other aamp/byml files
+	pub design_files: IndexMap<SmolStr, DiskRef<Vec<u8>>>,
 }
 
+/// A folder or an entity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Node {
 	Folder(Folder),
 	Entity(EntityKey),
 }
 
+/// An organisational unit. Defines the scenarios in which entities will be visible.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Folder {
 	name: SmolStr,
@@ -57,12 +63,15 @@ pub struct Folder {
 	children: Vec<Node>,
 }
 
-/// A bit set of all scenarios that objects will show up on.
+/// A bit set of all scenarios that entities will show up on.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Scenarios(u16);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entity {
+	/// An entity's "unique" id. This can be used by the game in certain hardcoded situations,
+	/// and is not actually unique. See [note 2](https://smo.wiki/w/index.php?title=Stage_archive&oldid=12386#cite_note-leftover-2)
+	/// for more information about id uniqueness.
 	pub id: SmolStr,
 	/// The name used by a factory to instantiate the entity. (`ParameterConfigName`)
 	pub factory_name: SmolStr,
@@ -75,47 +84,86 @@ pub struct Entity {
 	pub display_name: SmolStr,
 	/// A comment displayed to the user in the editor.
 	pub comment: SmolStr,
-	/// Cameras attached to an object, identified by their suffix.
+	/// Cameras attached to an entity, identified by their suffix.
 	pub cameras: IndexMap<SmolStr, Camera>,
-	/// The transform of the object.
-	pub transform: ObjectTransform,
-	/// The display transform of the object, originating from the base transform
-	pub display_transform: ObjectTransform,
+	/// The transform of the entity.
+	pub transform: Transform,
+	/// The display transform of the entity, originating from the base transform
+	pub display_transform: Transform,
+	/// Sets of linked objects identified by a link name.
 	pub links: IndexMap<String, Vec<Linked>>,
-	pub params: IndexMap<String, StageParameter>,
+	/// Extra parameters used by an actor.
+	pub params: IndexMap<String, EntityParameter>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObjectTransform {
-	/// The translation of an object from the origin.
+pub struct Transform {
+	/// The translation of an entity from the origin.
 	pub translation: Vec3,
-	/// The rotation of an object in Euler angles.
+	/// The rotation of an entity in Euler angles.
 	pub rotation: Vec3,
-	/// The scale of an object.
+	/// The scale of an entity.
 	pub scale: Vec3,
 }
 
+/// A linked
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Linked {
-	/// A linked object.
+	/// A linked entity.
 	Object(EntityKey),
 	/// A linked rail.
-	Rail {
-		// todo: what's in a rail?
+	Rail(Rail),
+}
+
+/// A user-defined curve for actors to sample points from.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Rail {
+	/// A rail that uses linear interpolation to interpolate between points.
+	Linear {
+		/// Whether the rail will interpolate between the first and last points.
+		is_closed: bool,
+		/// The list of points used in the line.
+		points: Vec<RailPoint>,
+	},
+	/// A rail that uses a bezier curve to interpolate between points.
+	Bezier {
+		/// Whether the rail will interpolate between the first and last points.
+		is_closed: bool,
+		/// The list of points and handles used in the curve.
+		points: Vec<BezierRailPoint>,
 	},
 }
 
-struct Rail {
-	
+/// A point in a rail.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RailPoint {
+	/// The transform of the point.
+	pub transform: Transform,
+	/// Extra parameters used by actors.
+	pub parameters: IndexMap<SmolStr, EntityParameter>,
 }
 
+/// A bezier curve point in a rail.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BezierRailPoint {
+	/// The point that the curve will go through.
+	pub point: RailPoint,
+	/// The handle used for interpolation between the previous and current points.
+	pub incoming_handle: Vec3,
+	/// The handle used for interpolation between the current and next points.
+	pub outgoing_handle: Vec3,
+}
+
+/// A camera with a suffix.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SuffixCamera {
 	/// The `Suffix` in a camera's `Id`
 	pub suffix: SmolStr,
+	/// The camera.
 	pub camera: Camera,
 }
 
+/// Partially defined camera id
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CameraId {
 	/// The `ObjId` in a camera's `Id`
@@ -125,13 +173,16 @@ struct CameraId {
 }
 
 // TODO: statically parameterized cameras
+/// A camera ticket, used for defining how cameras should behave.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Camera {
 	/// The `Suffix` in a camera's `Id`
 	pub factory_name: SmolStr,
+	/// Extra parameters used by a camera poser.
 	pub parameters: IndexMap<SmolStr, CameraParameter>,
 }
 
+/// Essential types and values of a camera parameter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CameraParameter {
 	String(SmolStr),
@@ -142,8 +193,9 @@ pub enum CameraParameter {
 	Array(Vec<CameraParameter>),
 }
 
+/// Essential types and values of an entity's parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum StageParameter {
+pub enum EntityParameter {
 	String(SmolStr),
 	Boolean(bool),
 	I32(i32),
