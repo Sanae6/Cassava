@@ -3,10 +3,15 @@ name = "cassava-editor"
 version = "0.1.0"
 edition = "2024"
 
-[lib]
-crate-type = ["cdylib"]
-
 [dependencies]
-cassava = { path = "../cassava", version = "0.1.0" }
-godot = "*"
+gpui = { package = "gpui-ce", git = "https://github.com/Far-Beyond-Pulsar/WGPUI" }
 snafu = { workspace = true }
+rfd = "^0.17.2"
+serde = { workspace = true }
+toml = { workspace = true }
+directories = "^6.0.0"
+atomic_refcell = { workspace = true }
+cassava-project = { version = "0.1.0", path = "../project" }
+cassava = { version = "0.1.0", path = "../cassava" }
+heapless = "0.9.3"
+ouroboros = "0.18.5"

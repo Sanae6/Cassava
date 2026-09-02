@@ -715,6 +715,7 @@ pub struct ShaderParam {
 	pub depend_index: u16,
 	pub value: ParamValue,
 }
+
 #[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
 enum ParamType {
 	Bool = 0,
@@ -746,6 +747,7 @@ enum ParamType {
 	Srt3D = 29,
 	TexSrt = 30,
 }
+
 #[derive(Clone, Debug)]
 pub enum ParamValue {
 	Bool(bool),
@@ -790,6 +792,7 @@ pub enum ParamValue {
 		translation: Vec2,
 	},
 }
+
 #[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureSrtMode {
 	Maya,
