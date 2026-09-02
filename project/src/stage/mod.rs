@@ -154,6 +154,11 @@ impl Default for Transform {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinkedEntity {
+	// if an entity has a more visible set than its parent,
+	// it *should* be displayed as an issue! can be solved by duplicating
+	// the linked object in scenarios where it gets put onto a list,
+	// or solved by making the parent appear in every scenario that the
+	// child can show up in.
 	scenarios: Option<Scenarios>,
 	entity: EntityKey,
 }
