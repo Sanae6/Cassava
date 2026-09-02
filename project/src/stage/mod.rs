@@ -159,6 +159,7 @@ pub struct LinkedEntity {
 	// the linked object in scenarios where it gets put onto a list,
 	// or solved by making the parent appear in every scenario that the
 	// child can show up in.
+	// ideally show as gray on both link source and linked entity with a little warning icon :3
 	scenarios: Option<Scenarios>,
 	entity: EntityKey,
 }
