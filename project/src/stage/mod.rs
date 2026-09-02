@@ -63,10 +63,46 @@ pub struct Folder {
 	children: Vec<Node>,
 }
 
-/// A bit set of all scenarios that entities will show up on.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Scenarios(u16);
+/// Type-safe wrapper around a scenario number.
+#[derive(Clone, Copy, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+struct Scenario(u8);
+impl Scenario {
+	pub fn new(index: u8) -> Self {
+		assert!((1..16).contains(&index), "index must be in range 1..=15");
+		Self(index)
+	}
+}
 
+/// The set of all scenarios that entities will show up on.
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+struct Scenarios(u16);
+impl std::fmt::Debug for Scenarios {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_tuple("Scenarios")
+			.field(&self.iter().collect::<Vec<_>>())
+			.finish()
+	}
+}
+impl Scenarios {
+	pub fn new(set: u16) -> Self {
+		Self(set)
+	}
+	pub fn set(&mut self, index: Scenario) {
+		self.0 |= 1 << (index.0 - 1);
+	}
+	pub fn test(&self, index: Scenario) -> bool {
+		self.0 & 1 << (index.0 - 1 ) != 0
+	}
+	pub fn iter(&self) -> impl Iterator<Item = Scenario> {
+		(1..16).filter(|index| self.test(Scenario::new(*index))).map(Scenario)
+	}
+	pub fn set_all_from(&mut self, other: Scenarios) {
+		self.0 |= other.0;
+	}
+}
+
+/// A single stage entity. This can correspond with an actor, area, rail, a map icon,
+/// or more.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entity {
 	/// An entity's "unique" id. This can be used by the game in certain hardcoded situations,
@@ -84,16 +120,16 @@ pub struct Entity {
 	pub display_name: SmolStr,
 	/// A comment displayed to the user in the editor.
 	pub comment: SmolStr,
-	/// Cameras attached to an entity, identified by their suffix.
-	pub cameras: IndexMap<SmolStr, Camera>,
+	/// Cameras attached to an entity, with an optional suffix.
+	pub cameras: Vec<(Option<SmolStr>, Camera)>,
 	/// The transform of the entity.
 	pub transform: Transform,
 	/// The display transform of the entity, originating from the base transform
 	pub display_transform: Transform,
-	/// Sets of linked objects identified by a link name.
-	pub links: IndexMap<String, Vec<Linked>>,
+	/// Sets of linked entities identified by a link name.
+	pub links: IndexMap<String, Vec<LinkedEntity>>,
 	/// Extra parameters used by an actor.
-	pub params: IndexMap<String, EntityParameter>,
+	pub params: IndexMap<String, Parameter>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,53 +142,60 @@ pub struct Transform {
 	pub scale: Vec3,
 }
 
-/// A linked
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Linked {
-	/// A linked entity.
-	Object(EntityKey),
-	/// A linked rail.
-	Rail(Rail),
+impl Default for Transform {
+	fn default() -> Self {
+		Self {
+			translation: Default::default(),
+			rotation: Default::default(),
+			scale: Vec3::ONE,
+		}
+	}
 }
 
-/// A user-defined curve for actors to sample points from.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Rail {
-	/// A rail that uses linear interpolation to interpolate between points.
-	Linear {
-		/// Whether the rail will interpolate between the first and last points.
-		is_closed: bool,
-		/// The list of points used in the line.
-		points: Vec<RailPoint>,
-	},
-	/// A rail that uses a bezier curve to interpolate between points.
-	Bezier {
-		/// Whether the rail will interpolate between the first and last points.
-		is_closed: bool,
-		/// The list of points and handles used in the curve.
-		points: Vec<BezierRailPoint>,
-	},
+pub struct LinkedEntity {
+	scenarios: Option<Scenarios>,
+	entity: EntityKey,
 }
 
-/// A point in a rail.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RailPoint {
-	/// The transform of the point.
-	pub transform: Transform,
-	/// Extra parameters used by actors.
-	pub parameters: IndexMap<SmolStr, EntityParameter>,
-}
+// /// A user-defined curve for actors to sample points from.
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub enum Rail {
+// 	/// A rail that uses linear interpolation to interpolate between points.
+// 	Linear {
+// 		/// Whether the rail will interpolate between the first and last points.
+// 		is_closed: bool,
+// 		/// The list of points used in the line.
+// 		points: Vec<RailPoint>,
+// 	},
+// 	/// A rail that uses a bezier curve to interpolate between points.
+// 	Bezier {
+// 		/// Whether the rail will interpolate between the first and last points.
+// 		is_closed: bool,
+// 		/// The list of points and handles used in the curve.
+// 		points: Vec<BezierRailPoint>,
+// 	},
+// }
 
-/// A bezier curve point in a rail.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BezierRailPoint {
-	/// The point that the curve will go through.
-	pub point: RailPoint,
-	/// The handle used for interpolation between the previous and current points.
-	pub incoming_handle: Vec3,
-	/// The handle used for interpolation between the current and next points.
-	pub outgoing_handle: Vec3,
-}
+// /// A point in a rail.
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct RailPoint {
+// 	/// The transform of the point.
+// 	pub transform: Transform,
+// 	/// Extra parameters used by actors.
+// 	pub parameters: IndexMap<SmolStr, EntityParameter>,
+// }
+
+// /// A bezier curve point in a rail.
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct BezierRailPoint {
+// 	/// The point that the curve will go through.
+// 	pub point: RailPoint,
+// 	/// The handle used for interpolation between the previous and current points.
+// 	pub incoming_handle: Vec3,
+// 	/// The handle used for interpolation between the current and next points.
+// 	pub outgoing_handle: Vec3,
+// }
 
 /// A camera with a suffix.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,34 +215,25 @@ struct CameraId {
 	suffix: Option<SmolStr>,
 }
 
-// TODO: statically parameterized cameras
 /// A camera ticket, used for defining how cameras should behave.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Camera {
-	/// The `Suffix` in a camera's `Id`
+	/// The name used by a factory to instantiate the camera. (`Class/Name`)
 	pub factory_name: SmolStr,
 	/// Extra parameters used by a camera poser.
-	pub parameters: IndexMap<SmolStr, CameraParameter>,
+	pub parameters: IndexMap<SmolStr, Parameter>,
 }
 
-/// Essential types and values of a camera parameter.
+/// Essential types and values of an entity or camera's parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CameraParameter {
+pub enum Parameter {
 	String(SmolStr),
 	Boolean(bool),
 	I32(i32),
 	F32(f32),
-	Dictionary(IndexMap<SmolStr, CameraParameter>),
-	Array(Vec<CameraParameter>),
-}
-
-/// Essential types and values of an entity's parameters.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EntityParameter {
-	String(SmolStr),
-	Boolean(bool),
-	I32(i32),
-	F32(f32),
+	Dictionary(IndexMap<SmolStr, Parameter>),
+	Array(Vec<Parameter>),
+	Null,
 }
 
 impl ProjectAsset for Stage {

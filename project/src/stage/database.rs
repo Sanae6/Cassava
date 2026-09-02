@@ -26,8 +26,8 @@ pub enum PlacementFile {
 pub struct EntityDatabase {
 	/// The mapping of object names to
 	object_name_to_location: IndexMap<String, PlacementLocation>,
-  entity_templates: IndexMap<String, Entity>,
-  camera_parameter_templates: (),
+	entity_templates: IndexMap<String, Entity>,
+	camera_parameter_templates: (),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

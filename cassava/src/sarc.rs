@@ -2,6 +2,7 @@ use std::fs;
 use std::ops::Range;
 use std::{collections::HashMap, path::Path};
 
+use indexmap::IndexMap;
 use snafu::prelude::*;
 
 use crate::util::{BinaryReader, BinaryWriter, ByteOrder};
@@ -43,7 +44,7 @@ pub enum Error {
 
 pub struct Reader {
 	archive_data: Vec<u8>,
-	files: HashMap<String, Range<usize>>,
+	files: IndexMap<String, Range<usize>>,
 	byte_order: ByteOrder,
 }
 

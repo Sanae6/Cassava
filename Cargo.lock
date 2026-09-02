@@ -812,6 +812,7 @@ dependencies = [
  "clap",
  "glam",
  "indexmap",
+ "paste",
  "relative-path",
  "ron",
  "serde",

@@ -16,6 +16,7 @@ tracing = { workspace = true }
 ron = "0.12.2"
 chrono = { version = "0.4.45", features = ["serde"] }
 smol_str = { version = "0.3.6", features = ["serde"] }
+paste = "1.0.15"
 
 [dev-dependencies]
 clap = { workspace = true}
