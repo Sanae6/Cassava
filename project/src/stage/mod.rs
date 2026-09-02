@@ -3,10 +3,11 @@
 pub mod database;
 mod import;
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 
+use bitfield_struct::bitfield;
 use glam::Vec3;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
@@ -31,8 +32,8 @@ pub struct Stage {
 	pub global_cameras: Vec<SuffixCamera>,
 	/// `Tickets` cameras that are bound to an entity that does not exist in the stage (import only)
 	pub unused_cameras: IndexMap<SmolStr, (Option<SmolStr>, Camera)>,
-	/// Koopa Freerunning
-	pub koopa_freerunning: (),
+	/// [Koopa Freerunning](https://smo.wiki/Koopa_Freerunning) racers' recordings.
+	pub koopa_freerunning: KoopaFreerunning,
 	// todo: evaluate everything that goes into design archives (aamp/graphicsarea/graphicsquality/etc.)
 	// this is currently a temporary solution storing for graphics files like cubemaps and
 	// other aamp/byml files
@@ -65,16 +66,17 @@ pub struct Folder {
 
 /// Type-safe wrapper around a scenario number.
 #[derive(Clone, Copy, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-struct Scenario(u8);
+pub struct Scenario(u8);
 impl Scenario {
 	pub fn new(index: u8) -> Self {
 		assert!((1..16).contains(&index), "index must be in range 1..=15");
 		Self(index)
 	}
+	pub fn value(&self) -> u8 { self.0 }
 }
 
 /// The set of all scenarios that entities will show up on.
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, Serialize, Deserialize, PartialEq, Eq)]
 struct Scenarios(u16);
 impl std::fmt::Debug for Scenarios {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -91,10 +93,12 @@ impl Scenarios {
 		self.0 |= 1 << (index.0 - 1);
 	}
 	pub fn test(&self, index: Scenario) -> bool {
-		self.0 & 1 << (index.0 - 1 ) != 0
+		self.0 & 1 << (index.0 - 1) != 0
 	}
 	pub fn iter(&self) -> impl Iterator<Item = Scenario> {
-		(1..16).filter(|index| self.test(Scenario::new(*index))).map(Scenario)
+		(1..16)
+			.filter(|index| self.test(Scenario::new(*index)))
+			.map(Scenario)
 	}
 	pub fn set_all_from(&mut self, other: Scenarios) {
 		self.0 |= other.0;
@@ -127,7 +131,7 @@ pub struct Entity {
 	/// The display transform of the entity, originating from the base transform
 	pub display_transform: Transform,
 	/// Sets of linked entities identified by a link name.
-	pub links: IndexMap<String, Vec<LinkedEntity>>,
+	pub links: IndexMap<String, IndexSet<LinkedEntity>>,
 	/// Extra parameters used by an actor.
 	pub params: IndexMap<String, Parameter>,
 }
@@ -152,7 +156,7 @@ impl Default for Transform {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LinkedEntity {
 	// if an entity has a more visible set than its parent,
 	// it *should* be displayed as an issue! can be solved by duplicating
@@ -163,45 +167,6 @@ pub struct LinkedEntity {
 	scenarios: Option<Scenarios>,
 	entity: EntityKey,
 }
-
-// /// A user-defined curve for actors to sample points from.
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub enum Rail {
-// 	/// A rail that uses linear interpolation to interpolate between points.
-// 	Linear {
-// 		/// Whether the rail will interpolate between the first and last points.
-// 		is_closed: bool,
-// 		/// The list of points used in the line.
-// 		points: Vec<RailPoint>,
-// 	},
-// 	/// A rail that uses a bezier curve to interpolate between points.
-// 	Bezier {
-// 		/// Whether the rail will interpolate between the first and last points.
-// 		is_closed: bool,
-// 		/// The list of points and handles used in the curve.
-// 		points: Vec<BezierRailPoint>,
-// 	},
-// }
-
-// /// A point in a rail.
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub struct RailPoint {
-// 	/// The transform of the point.
-// 	pub transform: Transform,
-// 	/// Extra parameters used by actors.
-// 	pub parameters: IndexMap<SmolStr, EntityParameter>,
-// }
-
-// /// A bezier curve point in a rail.
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub struct BezierRailPoint {
-// 	/// The point that the curve will go through.
-// 	pub point: RailPoint,
-// 	/// The handle used for interpolation between the previous and current points.
-// 	pub incoming_handle: Vec3,
-// 	/// The handle used for interpolation between the current and next points.
-// 	pub outgoing_handle: Vec3,
-// }
 
 /// A camera with a suffix.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,20 +207,92 @@ pub enum Parameter {
 	Null,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KoopaFreerunning {
+	pub scenarios: IndexMap<Scenario, IndexMap<u8, IndexMap<RacerLevel, Racer>>>,
+}
+
+#[derive(Debug, Clone, Copy, Hash, Serialize, Deserialize, PartialEq, Eq)]
+pub enum RacerLevel {
+	Unspecified,
+	Level(u8),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Racer {
+	pub capture_name: Option<String>,
+	pub frames: Vec<RacerFrame>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RacerFrame {
+	pub translation: Vec3,
+	pub rotation: Vec3,
+	pub animation: Arc<str>,
+	pub animation_time: f32,
+	pub flags: RacerFrameFlags,
+	pub material_code: Arc<str>,
+	pub cap: Option<RacerFrameCap>,
+	pub effect: Option<RacerFrameEffect>,
+}
+
+#[bitfield(u16)]
+#[derive(Serialize, Deserialize)]
+pub struct RacerFrameFlags {
+	#[bits(1)]
+	_padding: u8,
+	landing_reaction: bool,
+	big_landing_reaction: bool,
+	#[bits(3)]
+	unknown: u8,
+	splash: bool,
+	big_splash: bool,
+	wet: bool,
+	water: bool,
+	puddle: bool,
+	#[bits(5)]
+	_padding: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RacerFrameCap {
+	translation: Vec3,
+	rotation: Vec3,
+	animation: Arc<str>,
+	animation_time: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RacerFrameEffect {
+	translation: Vec3,
+	rotation: Vec3,
+}
+
 impl ProjectAsset for Stage {
 	fn load(path: &Path) -> Result<Self, Whatever> {
-		let data =
-			fs::read_to_string(path.join("stage.ron")).whatever_context("failed to read stage file")?;
-		ron::from_str(&data).whatever_context("failed to load stage file")
+		let data = fs::OpenOptions::new()
+			.read(true)
+			.open(path.join("stage.ron.zstd"))
+			.whatever_context("failed to open stage file")?;
+		let data = zstd::stream::read::Decoder::new(data)
+			.whatever_context("failed to start decompressing stage file")?;
+		ron::de::from_reader(data).whatever_context("failed to load stage file")
 	}
 
 	fn save(&self, path: &Path) -> Result<(), Whatever> {
 		fs::create_dir_all(path).whatever_context("failed to ensure stage directory exists")?;
 
-		let file = ron::ser::to_string_pretty(self, PrettyConfig::new().indentor("  "))
+		let file = fs::OpenOptions::new()
+			.create(true)
+			.write(true)
+			.open(path.join("stage.ron.zstd"))
+			.whatever_context("failed to open stage file")?;
+		let mut file = zstd::stream::Encoder::new(file, 0)
+			.whatever_context("failed to compress stage file")?
+			.auto_finish();
+		ron::Options::default()
+			.to_io_writer_pretty(&mut file, self, PrettyConfig::new().indentor("  "))
 			.whatever_context("failed to serialize stage file")?;
-		println!("Save path: {path:?}");
-		fs::write(path.join("stage.ron"), file).whatever_context("failed to write stage file")?;
 
 		for (file_name, ele) in &self.design_files {
 			ele

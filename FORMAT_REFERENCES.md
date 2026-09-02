@@ -12,3 +12,4 @@ resources that i depend on for information about file formats
   - [Structs on EPD Wiki](https://epd.zeldamods.org/wiki/Bntx) by [Watertoon](https://github.com/Watertoon/)
   - [Implementation in BntxLibrary2](https://github.com/Hengle/BntxLibrary2/) by [Hengle](https://github.com/Hengle)
   - [Overview of BCn texture compression](https://www.reedbeta.com/blog/understanding-bcn-texture-compression-formats/) by [Nathan Reed](https://www.reedbeta.com/)
+

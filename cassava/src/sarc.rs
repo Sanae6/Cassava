@@ -148,7 +148,7 @@ impl Reader {
 				let start_offset = reader.read_u32()? as usize;
 				let end_offset = reader.read_u32()? as usize;
 
-				let data_size = end_offset
+				let _data_size = end_offset
 					.checked_sub(start_offset)
 					.ok_or(Error::DataOffsetsOutOfOrder)?;
 

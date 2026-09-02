@@ -1,12 +1,19 @@
-use std::{borrow::Cow, collections::HashMap, fs, path::Path, sync::Arc};
+use std::{
+	borrow::Cow,
+	collections::{HashMap, HashSet},
+	fs,
+	path::Path,
+	sync::{Arc, LazyLock},
+};
 
 use cassava::{
-	atomic_refcell::AtomicRefCell,
 	byaml::{self, Array, Dictionary, Element},
-	util::{ArcAtomicRef, ArcAtomicRefCellExt, BinaryReader},
+	sarc,
+	util::{ArcAtomicRefCellExt, BinaryReader},
 };
 use glam::Vec3;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
+use regex::Regex;
 use slotmap::SlotMap;
 use smol_str::SmolStr;
 use snafu::{OptionExt, ResultExt, Whatever, ensure_whatever, whatever};
@@ -15,8 +22,9 @@ use tracing::warn;
 use crate::{
 	DiskRef,
 	stage::{
-		Camera, CameraId, Entity, EntityKey, Folder, Node, Parameter, Scenario, Scenarios, Stage,
-		SuffixCamera, Transform,
+		Camera, CameraId, Entity, EntityKey, Folder, KoopaFreerunning, LinkedEntity, Node, Parameter,
+		Racer, RacerFrame, RacerFrameCap, RacerFrameEffect, RacerFrameFlags, RacerLevel, Scenario,
+		Scenarios, Stage, SuffixCamera, Transform,
 	},
 	util::load_szs,
 };
@@ -52,6 +60,7 @@ impl Stage {
 				)
 			})
 			.transpose()?;
+		let design_byml_name = format!("{stage_name}Design.byml");
 		let (design_byml, design_archive) = design_path
 			.exists()
 			.then(|| -> Result<_, Whatever> {
@@ -69,16 +78,15 @@ impl Stage {
 			})
 			.transpose()?
 			.unzip();
-		let design_byml_name = format!("{stage_name}Map.byml");
 		let (map_byml, map_archive) = {
-			let szs = fs::read(map_path).whatever_context("failed to read stage's design archive")?;
+			let szs = fs::read(map_path).whatever_context("failed to read stage's map archive")?;
 			let sarc = load_szs(&szs)?;
 			let byml = sarc
-				.get_file(&design_byml_name)
-				.whatever_context("unable to find stage byml in stage's design archive")?;
+				.get_file(&format!("{stage_name}Map.byml"))
+				.whatever_context("unable to find stage byml in stage's map archive")?;
 			(
 				byaml::Byml::read(&mut BinaryReader::new(&byml))
-					.whatever_context("failed to read stage design byml")?,
+					.whatever_context("failed to read stage map byml")?,
 				sarc,
 			)
 		};
@@ -108,7 +116,7 @@ impl Stage {
 		let design_files = if let Some(archive) = design_archive {
 			archive
 				.files()
-				.filter(|(file_name, _)| *file_name == design_byml_name)
+				.filter(|(file_name, _)| *file_name != design_byml_name)
 				.map(|(file_name, data)| {
 					(
 						file_name.into(),
@@ -155,6 +163,7 @@ impl Stage {
 
 			let entrance_tickets = camera_param
 				.get("StartTickets")
+				.filter(|ticket| !ticket.is_null())
 				.map(|tickets| {
 					tickets
 						.as_array()
@@ -183,6 +192,7 @@ impl Stage {
 
 			let object_tickets = camera_param
 				.get("Tickets")
+				.filter(|ticket| !ticket.is_null())
 				.map(|tickets| {
 					tickets
 						.as_array()
@@ -241,16 +251,28 @@ impl Stage {
 				))
 			})
 			.collect::<Result<_, _>>()?;
+
 		let mut entities = SlotMap::with_key();
 		let mut placement_to_key = IndexMap::new();
 		let mut layer_folders = IndexMap::new();
-		Self::import_placement_file(
-			&mut entities,
-			&mut placement_to_key,
-			&mut layer_folders,
-			&mut object_cameras,
-			&map_byml.borrow(),
-		)?;
+		const PLACEMENT_SUFFIXES: [&'static str; 3] = ["Map", "Sound", "Design"];
+		for (index, byml) in [Some(map_byml), sound_byml, design_byml]
+			.into_iter()
+			.flatten()
+			.enumerate()
+		{
+			tracing::debug!("reading placement file {}", PLACEMENT_SUFFIXES[index]);
+			Self::import_placement_file(
+				&mut entities,
+				&mut placement_to_key,
+				&mut layer_folders,
+				&mut object_cameras,
+				&byml.borrow(),
+				PLACEMENT_SUFFIXES[index],
+			)?;
+		}
+
+		let koopa_freerunning = Self::import_koopas(&map_archive)?;
 
 		Ok(Self {
 			entities,
@@ -264,7 +286,7 @@ impl Stage {
 			entrance_cameras,
 			global_cameras,
 			unused_cameras: object_cameras,
-			koopa_freerunning: Default::default(),
+			koopa_freerunning,
 		})
 	}
 
@@ -274,6 +296,7 @@ impl Stage {
 		layer_folders: &mut IndexMap<SmolStr, Folder>,
 		object_cameras: &mut IndexMap<SmolStr, (Option<SmolStr>, Camera)>,
 		placement_file: &Array,
+		placement_suffix: &'static str,
 	) -> Result<(), Whatever> {
 		macro_rules! get {
 			($on: expr, $key: literal, $as: ident, $what: literal) => {
@@ -310,28 +333,28 @@ impl Stage {
 					let object_arc = object
 						.as_dictionary()
 						.whatever_context("object must be a dictionary")?;
-					let object = object_arc.clone().into_borrow();
-
-					let layer = get!(object, "LayerConfigName", as_string, "a string");
-
-					layer_scenarios
-						.entry(layer)
-						.or_insert(Scenarios::new(0))
-						.set(scenario_no);
-					drop(object);
 
 					let mut object_queue: Vec<_> = vec![object_arc];
 					while let Some(object_arc) = object_queue.pop() {
 						{
 							let mut object = object_arc.borrow_mut();
-							let id = object["Id"].unwrap_string();
+							let id = get!(object, "Id", as_string, "a string");
 							if id.starts_with("rail") {
-								object["Id"] = Element::String(format!("_{id}_scen{}", scenario_no.0).into())
+								// rails have non-unique ids between scenarios and placement files,
+								// so we need to update them accordingly.
+								object["Id"] =
+									Element::String(format!("{}_{}_{id}", placement_suffix, scenario_no.0).into())
 							}
+							drop(object);
 						}
 						let object = object_arc.borrow();
-						let id = get!(object, "Id", as_string, "a string");
+						let id = object["Id"].unwrap_string();
 						let object_name = get!(object, "UnitConfigName", as_string, "a string");
+						let layer = get!(object, "LayerConfigName", as_string, "a string");
+						layer_scenarios
+							.entry(layer)
+							.or_insert(Scenarios::new(0))
+							.set(scenario_no);
 						placement_entities
 							.entry((Cow::Owned(id.clone()), Cow::Owned(object_name.clone())))
 							.or_insert(IndexMap::new())
@@ -356,12 +379,12 @@ impl Stage {
 			}
 		}
 
-		for (layer, scenarios) in layer_scenarios {
+		for (layer, scenarios) in &layer_scenarios {
 			let folder = layer_folders
 				.entry(layer.clone())
 				.or_insert_with(|| Folder {
-					name: layer,
-					scenarios: Some(scenarios),
+					name: layer.clone(),
+					scenarios: Some(*scenarios),
 					children: vec![],
 				});
 			if let Some(mut scenarios) = folder.scenarios {
@@ -452,26 +475,78 @@ impl Stage {
 			placement_to_key.insert((id.clone(), object_name.clone()), entity_key);
 		}
 
-		for (entity_key, entity) in entities {
-			let objects = placement_entities
-				.get(&(
-					Cow::Borrowed(&entity.id),
-					Cow::Borrowed(&entity.object_name),
-				))
-				.expect("should have that entity already");
+		for (_, entity) in entities {
+			let Some(objects) = placement_entities.get(&(
+				Cow::Borrowed(&entity.id),
+				Cow::Borrowed(&entity.object_name),
+			)) else {
+				tracing::trace!(
+					"{}:{} doesn't appear in this file",
+					entity.id,
+					entity.object_name
+				);
+				continue;
+			};
+
+			let mut known_linked_objects: IndexMap<SmolStr, HashSet<EntityKey>> = IndexMap::new();
 			for (_, object) in objects {
-				let object = object.borrow();
-				// get!(object, "Links", as_dictionary,);
-				todo!("finish adding links")
+				let object = object.borrow_mut();
+				let entity_layer = object
+					.get("LayerConfigName")
+					.expect("object was already traversed")
+					.unwrap_string();
+				let mut links = get!(object, "Links", as_dictionary, "a dictionary").into_borrow_mut();
+				for (link_name, linked_objects) in links.drain(..) {
+					let mut linked_objects = linked_objects
+						.as_array()
+						.whatever_context("linked objects must be an array")?
+						.into_borrow_mut();
+
+					let known_objects = known_linked_objects.entry(link_name.clone()).or_default();
+
+					let linked_entities = entity
+						.links
+						.entry(link_name.into())
+						.or_insert(IndexSet::new());
+
+					for linked_object in linked_objects.drain(..) {
+						let linked_object = linked_object
+							.as_dictionary()
+							.whatever_context("linked object must be a dictionary")?
+							.into_borrow();
+
+						let id = linked_object
+							.get("Id")
+							.expect("linked object was already traversed")
+							.unwrap_string();
+						let object_name = linked_object
+							.get("UnitConfigName")
+							.expect("linked object was already traversed")
+							.unwrap_string();
+						let linked_entity_key = placement_to_key
+							.get(&(Cow::Borrowed(&id), Cow::Borrowed(&object_name)))
+							.expect("should have that entity already");
+
+						if !known_objects.insert(*linked_entity_key) {
+							continue;
+						}
+
+						let linked_entity_layer = linked_object
+							.get("LayerConfigName")
+							.expect("linked object was already traversed")
+							.unwrap_string();
+
+						linked_entities.insert(LinkedEntity {
+							scenarios: layer_scenarios
+								.get(&linked_entity_layer)
+								.filter(|_| linked_entity_layer != entity_layer)
+								.cloned(),
+							entity: *linked_entity_key,
+						});
+					}
+				}
 			}
-			// println!("object: {:?}");
 		}
-/*
-A -> B
-A, A/B
-A: Common
-B: Scenario_1
- */
 		Ok(())
 	}
 
@@ -591,5 +666,258 @@ B: Scenario_1
 				parameters,
 			},
 		))
+	}
+
+	fn import_koopas(map_archive: &sarc::Reader) -> Result<KoopaFreerunning, Whatever> {
+		static KFR_REGEX: LazyLock<Regex> =
+			LazyLock::new(|| Regex::new(r"(\d+)_(\d|x)_(\d+)").expect("regex should be good"));
+
+		let mut scenarios: IndexMap<Scenario, IndexMap<u8, IndexMap<RacerLevel, Racer>>> =
+			IndexMap::new();
+		for (file_name, file) in map_archive.files() {
+			let Some(captures) = KFR_REGEX.captures(file_name) else {
+				continue;
+			};
+			let scenario_no = captures
+				.get(1)
+				.expect("regex failed")
+				.as_str()
+				.parse()
+				.map(Scenario)
+				.expect("scenario should be a number");
+			let level = captures.get(2).expect("regex failed").as_str();
+			let level = if level == "x" {
+				RacerLevel::Unspecified
+			} else {
+				RacerLevel::Level(level.parse().expect("scenario should be a number"))
+			};
+			let racer_index: u8 = captures
+				.get(3)
+				.expect("regex failed")
+				.as_str()
+				.parse()
+				.expect("scenario should be a number");
+
+			let racer = byaml::Byml::read(&mut BinaryReader::new(file))
+				.whatever_context("failed to read koopa racer file")?
+				.as_dictionary()
+				.whatever_context("expected koopa racer to be a dictionary")?
+				.into_borrow();
+			let capture_name = racer
+				.get("HackName")
+				.whatever_context("hack name is missing")?
+				.as_string()
+				.map(|value| value.to_string());
+			fn string_array(
+				racer: &Dictionary,
+				key: &'static str,
+				expected: &'static str,
+			) -> Result<Vec<Arc<str>>, Whatever> {
+				Ok(
+					racer
+						.get(key)
+						.map(|el| {
+							el.as_array()
+								.map(|a| {
+									a.borrow()
+										.iter()
+										.map(|l| l.as_string().map(|s| Arc::from(s)))
+										.collect::<Option<Vec<Arc<str>>>>()
+								})
+								.unwrap_or(Some(vec![]))
+								.whatever_context(expected)
+						})
+						.transpose()?
+						.unwrap_or_default(),
+				)
+			}
+			let action = string_array(&racer, "ActionName", "expected action name to be a string")?;
+			let action_cap = string_array(
+				&racer,
+				"ActionNameCap",
+				"expected cap action name to be a string",
+			)?;
+			let material_codes = string_array(
+				&racer,
+				"MaterialCode",
+				"expected material code to be a string",
+			)?;
+			let data = racer
+				.get("DataArray")
+				.whatever_context("data array is missing")?
+				.as_array()
+				.whatever_context("expected data array to be an array")?
+				.into_borrow();
+
+			let mut frames = Vec::with_capacity(data.len());
+			for frame in data.iter() {
+				let frame = frame
+					.as_array()
+					.whatever_context("frame data must be an array")?
+					.into_borrow();
+				ensure_whatever!(frame.len() >= 10, "frame's length must be ten or more");
+
+				let translation = Vec3::new(
+					frame[0]
+						.as_f32()
+						.whatever_context("translation.x is not an f32")?,
+					frame[1]
+						.as_f32()
+						.whatever_context("translation.y is not an f32")?,
+					frame[2]
+						.as_f32()
+						.whatever_context("translation.z is not an f32")?,
+				);
+				let rotation = Vec3::new(
+					frame[3]
+						.as_f32()
+						.whatever_context("rotation.x is not an f32")?,
+					frame[4]
+						.as_f32()
+						.whatever_context("rotation.y is not an f32")?,
+					frame[5]
+						.as_f32()
+						.whatever_context("rotation.z is not an f32")?,
+				);
+				let animation = frame[6]
+					.as_i32()
+					.whatever_context("animation index is not an i32")?;
+				let animation = action
+					.get(animation as usize)
+					.cloned()
+					.whatever_context("animation index out of bounds")?;
+				let animation_time = frame[7]
+					.as_f32()
+					.whatever_context("animation time is not an f32")?;
+				let flags = frame[8].as_i32().whatever_context("")?;
+				let flags = RacerFrameFlags::from_bits(flags as _);
+				let material_code = frame[9].as_i32().whatever_context("")?;
+				let material_code = material_codes
+					.get(material_code as usize)
+					.cloned()
+					.whatever_context("material code not found")?;
+				let (cap, effect) = frame
+					.get(10)
+					.map(|extras: &Element| {
+						let extras = extras
+							.as_dictionary()
+							.whatever_context("extra hash was not a dictionary")?
+							.into_borrow();
+
+						let cap = extras
+							.get("Cap")
+							.and_then(|cap| cap.as_array())
+							.map(|cap| {
+								let cap = cap.into_borrow();
+								ensure_whatever!(cap.len() >= 9, "frame's cap length must be nine or more");
+								let translation = Vec3::new(
+									cap[0]
+										.as_f32()
+										.whatever_context("cap translation x is not an f32")?,
+									cap[1]
+										.as_f32()
+										.whatever_context("cap translation y is not an f32")?,
+									cap[2]
+										.as_f32()
+										.whatever_context("cap translation z is not an f32")?,
+								);
+								let rotation = Vec3::new(
+									cap[3]
+										.as_f32()
+										.whatever_context("cap rotation x is not an f32")?,
+									cap[4]
+										.as_f32()
+										.whatever_context("cap rotation y is not an f32")?,
+									cap[5]
+										.as_f32()
+										.whatever_context("cap rotation z is not an f32")?,
+								);
+								let animation = cap[6]
+									.as_i32()
+									.whatever_context("cap animation index is not an i32")?;
+								let animation = action_cap
+									.get(animation as usize)
+									.cloned()
+									.whatever_context("cap animation index out of bounds")?;
+								let animation_time = cap[7]
+									.as_f32()
+									.whatever_context("cap animation time is not an f32")?;
+								Ok(RacerFrameCap {
+									translation,
+									rotation,
+									animation,
+									animation_time,
+								})
+							})
+							.transpose()?;
+						let effect = extras
+							.get("Effect")
+							.and_then(|effect| effect.as_array())
+							.map(|effect| {
+								let effect = effect.into_borrow();
+								ensure_whatever!(
+									effect.len() >= 6,
+									"frame effect's length must be six or more"
+								);
+								let translation = Vec3::new(
+									effect[0]
+										.as_f32()
+										.whatever_context("effect translation x is not an f32")?,
+									effect[1]
+										.as_f32()
+										.whatever_context("effect translation y is not an f32")?,
+									effect[2]
+										.as_f32()
+										.whatever_context("effect translation z is not an f32")?,
+								);
+								let rotation = Vec3::new(
+									effect[3]
+										.as_f32()
+										.whatever_context("effect rotation x is not an f32")?,
+									effect[4]
+										.as_f32()
+										.whatever_context("effect rotation y is not an f32")?,
+									effect[5]
+										.as_f32()
+										.whatever_context("effect rotation z is not an f32")?,
+								);
+								Ok(RacerFrameEffect {
+									translation,
+									rotation,
+								})
+							})
+							.transpose()?;
+
+						Ok((cap, effect))
+					})
+					.transpose()?
+					.unzip();
+
+				frames.push(RacerFrame {
+					translation,
+					rotation,
+					animation,
+					animation_time,
+					flags,
+					material_code,
+					cap: cap.flatten(),
+					effect: effect.flatten(),
+				})
+			}
+
+			let racer = Racer {
+				capture_name,
+				frames,
+			};
+
+			scenarios
+				.entry(scenario_no)
+				.or_default()
+				.entry(racer_index)
+				.or_default()
+				.insert(level, racer);
+		}
+
+		Ok(KoopaFreerunning { scenarios })
 	}
 }
