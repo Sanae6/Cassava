@@ -9,11 +9,12 @@ members = [
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
 snafu = { version = "0.9.0", features = ["unstable-provider-api"] }
-glam = { version = "0.33.2", features = ["serde"] }
+glam = { version = "0.33.2", features = ["serde", "zerocopy"] }
 toml = "1.1.4"
 tracing = "0.1.44"
 atomic_refcell = "0.1.14"
 clap = { version = "^4.6.1", features = ["derive"] }
+zerocopy = { version = "^0.8", features = ["derive"] }
 
 # [patch."https://github.com/zed-industries/zed.git"]
 # gpui = { git = "https://github.com/gpui-ce/gpui-ce" }

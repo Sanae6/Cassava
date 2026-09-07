@@ -85,9 +85,9 @@ impl TabControl {
 		}
 	}
 
-	pub fn add_tab<T: Render>(
+	pub fn add_tab(
 		&mut self,
-		tab_view: &Entity<T>,
+		tab_view: AnyView,
 		configure: impl Fn(Tab, &mut Window, &mut App) -> Tab + 'static,
 	) {
 		let unique_id = loop {

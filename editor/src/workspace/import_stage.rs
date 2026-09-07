@@ -11,11 +11,7 @@ use snafu::Report;
 
 use crate::{
 	components::{
-		StyleExt,
-		button::Button,
-		event::AppEventExt,
-		root::PopDialog,
-		tree::{TreeItem, TreeState, tree},
+		StyleExt, button::Button, event::AppEventExt, root::PopDialog, theme::ThemeExt, tree::{TreeItem, TreeState, tree}
 	},
 	config::ConfigAccessor,
 	project::ProjectAccessor,
@@ -80,9 +76,8 @@ impl Render for ImportStage {
 		div()
 			.v_flex()
 			.size_full()
-			// .child("Hello world!")
+			.bg(cx.theme().pane_bg)
 			.child(tree(&self.tree_state, |entry, _, _| {
-				// ListItem::new(entry.item().id.clone())
 				Button::new(entry.label())
 					.pl(px(16.) * entry.depth() + px(12.))
 					.child(entry.label())
@@ -102,7 +97,6 @@ impl Render for ImportStage {
 					.child(
 						Button::new("import")
 							.label("Import")
-							// .with_variant(ButtonVariant::Primary)
 							.disabled(
 								self
 									.tree_state
@@ -120,7 +114,7 @@ impl Render for ImportStage {
 								let stage_name = entry.label();
 
 								let romfs_dir = cx.config().default_romfs_dir.as_ref().unwrap().clone();
-								println!("Loading stage {stage_name} from {romfs_dir:?}");
+								println!("Importing stage {stage_name} from {romfs_dir:?}");
 								if let Err(err) = cx.al_project_mut().import_stage(&romfs_dir, &stage_name) {
 									let err = Report::from_error(err);
 									eprintln!("{err}");

@@ -14,6 +14,7 @@ impl Project {
 		}
 	}
 
+	#[allow(unused)]
 	pub fn project_name(&self) -> SharedString {
 		self.project_name.clone()
 	}

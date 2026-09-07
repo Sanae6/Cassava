@@ -1,4 +1,4 @@
-use gpui::{App, Entity, Render, div, prelude::*, px, rems};
+use gpui::{App, Entity, Render, SharedString, div, prelude::*, px, rems};
 
 use crate::{
 	components::{
@@ -9,7 +9,7 @@ use crate::{
 		tree::{TreeItem, TreeState, tree},
 	},
 	project::ProjectAccessor,
-	workspace::{ProjectUpdate, import_stage::ImportStage},
+	workspace::{NewTab, ProjectUpdate, import_stage::ImportStage, stage_editor::StageEditor},
 };
 
 pub struct Explorer {
@@ -56,8 +56,8 @@ impl Explorer {
 impl Render for Explorer {
 	fn render(
 		&mut self,
-		_: &mut gpui::Window,
-		_: &mut gpui::Context<Self>,
+		window: &mut gpui::Window,
+		cx: &mut gpui::Context<Self>,
 	) -> impl gpui::IntoElement {
 		div()
 			.v_flex()
@@ -75,20 +75,21 @@ impl Render for Explorer {
 					Button::new(entry.id())
 						.pl(px(16.) * entry.depth() + px(12.))
 						.child(entry.label())
-				}), // .context_menu(|_, entry, popup, _, _| match entry.item().id.as_str() {
-				    // 	"stages" => popup.item(
-				    // 		PopupMenuItem::new("Import stage").on_click(|_, window, cx| {
-				    // 			let import_stage = cx.new(|cx| ImportStage::new(cx));
-				    // 			window.open_dialog(cx, move |dialog, _, _| {
-				    // 				dialog
-				    // 					.title("Import a stage")
-				    // 					.h(DefiniteLength::Fraction(3.0 / 4.0))
-				    // 					.child(import_stage.clone())
-				    // 			});
-				    // 		}),
-				    // 	),
-				    // 	_ => popup,
-				    // }),
+				})
+				.on_selected(|item, window, cx| {
+					let id = item.id();
+					let (root, other) = id.split_once("/").unwrap_or((&id, ""));
+					match root {
+						"stages" => {
+							let stage_name: SharedString = other.into();
+							let stage_editor = cx.new(|cx| StageEditor::new(&stage_name, window,cx));
+							cx.bus_emit(NewTab::new(stage_editor, move |tab, _, _| {
+								tab.title(stage_name.clone()).closeable(true)
+							}));
+						}
+						_ => {}
+					}
+				}),
 			)
 	}
 }

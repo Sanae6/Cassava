@@ -25,6 +25,10 @@ enum Commands {
 	ImportAll {
 		in_path: PathBuf,
 	},
+	NewProject {
+		in_path: PathBuf,
+		name: String,
+	},
 }
 
 #[snafu::report]
@@ -54,9 +58,12 @@ fn main() -> Result<(), Whatever> {
 			});
 
 			for stage_name in stages {
-        println!("testing {stage_name}");
+				println!("testing {stage_name}");
 				project.import_stage(&args.romfs_dir, &stage_name)?;
 			}
+		}
+		Commands::NewProject { in_path, name } => {
+			ALProject::create(&in_path, &name).unwrap();
 		}
 	}
 	Ok(())

@@ -38,8 +38,8 @@ pub enum Error {
 	NoModelArchive,
 	#[snafu(display("effect archive has no embedded texture archive (BNTX)"))]
 	NoTextureArchive,
-	#[snafu(display("effect archive has no embedded shader archive (BNSH)"))]
-	NoShaderArchive,
+	#[snafu(display("effect archive has no embedded shader container (BNSH)"))]
+	NoShaderContainer,
 }
 
 #[derive(Snafu, Debug)]

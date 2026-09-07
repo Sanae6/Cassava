@@ -17,11 +17,11 @@ impl Gallery {
 			tab_control: cx.new(|cx| {
 				let mut control = TabControl::new("gallery-tabs", cx);
 				let view = cx.new(|cx| tree::TreeTest::new(cx));
-				control.add_tab(&view, |tab, _, _| tab.title("Tabs"));
+				control.add_tab(view.into(), |tab, _, _| tab.title("Tabs"));
 				let view = cx.new(|_| start::StartView { v: true });
-				control.add_tab(&view, |tab, _, _| tab.title("Hello world"));
+				control.add_tab(view.into(), |tab, _, _| tab.title("Hello world"));
 				let view = cx.new(|_| start::StartView { v: false });
-				control.add_tab(&view, |tab, _, _| tab.title("Test"));
+				control.add_tab(view.into(), |tab, _, _| tab.title("Test"));
 				control
 			}),
 		})

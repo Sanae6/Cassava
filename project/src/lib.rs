@@ -9,17 +9,20 @@ use chrono::{DateTime, Local, Utc};
 use indexmap::IndexMap;
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, Whatever};
+use snafu::{OptionExt, ResultExt, Whatever};
 
-use crate::{stage::{Stage, database::EntityDatabase}, system::SystemData};
+use crate::{
+	stage::{Stage, database::EntityDatabase},
+	system::SystemData,
+};
 
 pub use disk_ref::{DiskRef, ProjectAsset};
 pub use smol_str;
 
 mod disk_ref;
 pub mod stage;
-mod util;
 pub mod system;
+mod util;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ALProject {
@@ -105,6 +108,14 @@ impl ALProject {
 
 	fn save_file<T: ProjectAsset>(&self, file_ref: &DiskRef<T>) -> Result<(), Whatever> {
 		file_ref.save(&self.root)
+	}
+
+	pub fn get_stage(&mut self, stage_name: &str) -> Result<Option<&mut Stage>, Whatever> {
+		self
+			.stages
+			.get_mut(stage_name)
+			.map(|stage| stage.load(&self.root))
+			.transpose()
 	}
 
 	pub fn import_stage(

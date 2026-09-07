@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::{cell::Cell, rc::Rc};
 
 use gpui::{
 	AbsoluteLength, App, AppContext, ClickEvent, Entity, IntoElement, RenderOnce, SharedString,
@@ -150,6 +150,7 @@ pub fn tree(
 	Tree {
 		state: state.clone(),
 		render: Box::new(move |item, window, app| render(item, window, app).justify_start().w_full()),
+		on_selected: None,
 		style: StyleRefinement::default(),
 	}
 }
@@ -158,7 +159,15 @@ pub fn tree(
 pub struct Tree {
 	state: Entity<TreeState>,
 	render: Box<dyn Fn(&TreeItem, &mut Window, &mut App) -> Button>,
+	on_selected: Option<Rc<dyn Fn(&TreeItem, &mut Window, &mut App)>>,
 	style: StyleRefinement,
+}
+
+impl Tree {
+	pub fn on_selected(mut self, on_selected: impl Fn(&TreeItem, &mut Window, &mut App) + 'static) -> Self {
+		self.on_selected = Some(Rc::new(on_selected));
+		self
+	}
 }
 
 impl Styled for Tree {
@@ -183,6 +192,7 @@ impl RenderOnce for Tree {
 						if collapsed {
 							return;
 						}
+						let on_selected = self.on_selected.clone();
 						vec.push(
 							(&self.render)(item, window, cx)
 								.when_some(state.selected.clone(), |div, selected| {
@@ -192,13 +202,19 @@ impl RenderOnce for Tree {
 								})
 								.on_click(window.listener_for(
 									&cx.entity(),
-									move |state, _event: &ClickEvent, _, cx| {
+									move |state, _event: &ClickEvent, window, cx| {
 										state.selected = Some(index);
 										let item: &TreeItem = state
 											.items
 											.with_flat_items(|items| items.get(index))
 											.expect("missing selected item");
-										if item.collapsed() {
+										if item.children.len() == 0 {
+											if let Some(on_selected) = &on_selected
+												&& _event.click_count() == 2
+											{
+												on_selected(item, window, cx)
+											}
+										} else if item.collapsed() {
 											item.collapsed.set(false);
 										} else {
 											item.collapsed.set(true);

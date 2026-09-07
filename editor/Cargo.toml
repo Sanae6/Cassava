@@ -15,3 +15,6 @@ cassava-project = { version = "0.1.0", path = "../project" }
 cassava = { version = "0.1.0", path = "../cassava" }
 heapless = "0.9.3"
 ouroboros = "0.18.5"
+wgpu = "30.0.1"
+glam = { workspace = true }
+zerocopy = { workspace = true }
