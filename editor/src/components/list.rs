@@ -177,7 +177,10 @@ impl Element for NaiveList {
 			move |scroll: &ScrollWheelEvent, phase, window, cx| {
 				if hitbox.is_hovered(window) && phase.bubble() {
 					let delta = scroll.delta.pixel_delta(window.rem_size());
-					let delta = delta.x + delta.y;
+					let mut delta = delta.x + delta.y;
+					if scroll.alt {
+						delta *= 6.0;
+					}
 					state.update(cx, |state, _| {
 						state.scroll_offset += delta.to_f32();
 						state.scroll_offset = state.scroll_offset.clamp(-total_height.to_f32(), 0.0);

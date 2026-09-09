@@ -32,6 +32,7 @@
               fenix.complete.rust-src
             ])
 
+            renderdoc
             clang
             pkg-config
             libxkbcommon

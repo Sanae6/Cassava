@@ -3,7 +3,7 @@ use std::{
 	collections::{HashMap, HashSet},
 	fs,
 	path::Path,
-	sync::{Arc, LazyLock},
+	sync::LazyLock,
 };
 
 use cassava::{
@@ -712,7 +712,7 @@ impl Stage {
 				racer: &Dictionary,
 				key: &'static str,
 				expected: &'static str,
-			) -> Result<Vec<Arc<str>>, Whatever> {
+			) -> Result<Vec<SmolStr>, Whatever> {
 				Ok(
 					racer
 						.get(key)
@@ -721,8 +721,8 @@ impl Stage {
 								.map(|a| {
 									a.borrow()
 										.iter()
-										.map(|l| l.as_string().map(|s| Arc::from(s)))
-										.collect::<Option<Vec<Arc<str>>>>()
+										.map(|l| l.as_string())
+										.collect::<Option<Vec<SmolStr>>>()
 								})
 								.unwrap_or(Some(vec![]))
 								.whatever_context(expected)

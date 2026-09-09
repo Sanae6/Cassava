@@ -24,10 +24,10 @@ fn vtx_main(
         instance.mtx_3,
     );
 
-    return proj_view * in_mtx * vec4f(pos[vertex_index], 0, 1);
+    return proj_view * in_mtx * vec4f(vec2f(100.0, 100.0) * pos[vertex_index], 0, 1);
 }
 
 @fragment
 fn frag_main() -> @location(0) vec4f {
-    return vec4(0, 0, 1, 1);
+    return vec4(1, 1, 1, 1);
 }

@@ -247,7 +247,7 @@ impl EffectArchive {
 				let ex = read_binary_file_header(reader, None).unwrap();
 				reader.seek(0)?;
 				let data = reader.read_slice(ex.1.file_size as usize)?;
-				std::fs::write("target/EffectData.bfsha", data).unwrap();
+				std::fs::write("target/EffectData.bnsh", data).unwrap();
 				Ok(())
 			})
 			.unwrap();

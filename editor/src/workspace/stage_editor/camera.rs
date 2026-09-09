@@ -23,7 +23,9 @@ impl ViewCamera {
 		let z_axis = actions.held(super::StageAction::MoveForward) as i8
 			- actions.held(super::StageAction::MoveBack) as i8;
 
-		self.rotation += actions.mouse_delta * 0.01 * Vec2::new(1.0, 1.0);
+		if actions.held(super::StageAction::Lock) {
+			self.rotation += actions.mouse_delta * 0.016;
+		}
 		self.rotation.y = self
 			.rotation
 			.y
@@ -32,15 +34,16 @@ impl ViewCamera {
 		let y_rot = Quat::from_axis_angle(Vec3::NEG_X, self.rotation.y);
 
 		let movement_direction =
-			(x_rot * y_rot).mul_vec3(Vec3::new(x_axis as f32, y_axis as f32, z_axis as f32));
+			(x_rot * y_rot).mul_vec3(Vec3::new(-x_axis as f32, 0.0, z_axis as f32))
+				+ Vec3::Y * y_axis as f32;
 
-		self.position += movement_direction * 0.01;
+		self.position += movement_direction * 10.0;
 	}
 
 	pub fn calculate_matrix(&self) -> Mat4 {
 		let up = Vec3::Y;
 		let x_rot = Quat::from_axis_angle(up, self.rotation.x);
 		let y_rot = Quat::from_axis_angle(Vec3::NEG_X, self.rotation.y);
-		glam::camera::lh::view::look_to_mat4(self.position, (x_rot * y_rot).mul_vec3(Vec3::Z), up)
+		glam::camera::rh::view::look_to_mat4(self.position, (x_rot * y_rot).mul_vec3(Vec3::Z), up)
 	}
 }

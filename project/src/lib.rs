@@ -9,7 +9,7 @@ use chrono::{DateTime, Local, Utc};
 use indexmap::IndexMap;
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
-use snafu::{OptionExt, ResultExt, Whatever};
+use snafu::{ResultExt, Whatever};
 
 use crate::{
 	stage::{Stage, database::EntityDatabase},

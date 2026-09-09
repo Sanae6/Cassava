@@ -1,6 +1,6 @@
 use gpui::{
-	AnyView, App, AppContext, ElementId, Entity, InteractiveElement, IntoElement, ParentElement,
-	Point, Render, RenderOnce, ScrollHandle, ScrollWheelEvent, SharedString,
+	AnyView, App, AppContext, Context, ElementId, Entity, InteractiveElement, IntoElement,
+	ParentElement, Point, Render, RenderOnce, ScrollHandle, ScrollWheelEvent, SharedString,
 	StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
@@ -64,10 +64,9 @@ impl RenderOnce for Tab {
 			.active(|div| div.bg(cx.theme().pane_bg))
 			.when(self.active, |div| div.bg(cx.theme().pane_bg))
 			.on_click(move |_, _, cx| {
-				self.tab_control.update(cx, |tabs, cx| {
-					tabs.active_tab = index;
-					cx.notify();
-				});
+				self
+					.tab_control
+					.update(cx, |tabs, cx| tabs.select_tab(index, cx));
 			})
 	}
 }
@@ -89,7 +88,7 @@ impl TabControl {
 		&mut self,
 		tab_view: AnyView,
 		configure: impl Fn(Tab, &mut Window, &mut App) -> Tab + 'static,
-	) {
+	) -> usize {
 		let unique_id = loop {
 			let unique_id = self.next_unique_id;
 			self.next_unique_id = self.next_unique_id.wrapping_add(1);
@@ -105,6 +104,13 @@ impl TabControl {
 			entity: tab_view.clone().into(),
 			configure: Box::new(configure),
 		});
+
+		self.tabs.len() - 1
+	}
+
+	pub fn select_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+		self.active_tab = index;
+		cx.notify();
 	}
 }
 

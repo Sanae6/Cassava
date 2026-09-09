@@ -3,7 +3,7 @@
 pub mod database;
 mod import;
 
-use std::{fs, path::Path, sync::Arc};
+use std::{fs, path::Path};
 
 use bitfield_struct::bitfield;
 use glam::Vec3;
@@ -50,7 +50,7 @@ pub enum Node {
 /// An organisational unit. Defines the scenarios in which entities will be visible.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Folder {
-	name: SmolStr,
+	pub name: SmolStr,
 	/// The scenarios that child nodes will be able to show up in.
 	/// If the parent folder specifies the set of scenarios its children are present in,
 	/// the current folder can opt out of being in particular scenarios.
@@ -60,8 +60,8 @@ pub struct Folder {
 	/// {1,5} ⊆ {1,3,5}
 	/// ```
 	/// If the scenario is not specified on a root folder, it will default to all scenarios.
-	scenarios: Option<Scenarios>,
-	children: Vec<Node>,
+	pub scenarios: Option<Scenarios>,
+	pub children: Vec<Node>,
 }
 
 /// Type-safe wrapper around a scenario number.
@@ -72,12 +72,14 @@ impl Scenario {
 		assert!((1..16).contains(&index), "index must be in range 1..=15");
 		Self(index)
 	}
-	pub fn value(&self) -> u8 { self.0 }
+	pub fn value(&self) -> u8 {
+		self.0
+	}
 }
 
 /// The set of all scenarios that entities will show up on.
 #[derive(Clone, Copy, Hash, Serialize, Deserialize, PartialEq, Eq)]
-struct Scenarios(u16);
+pub struct Scenarios(u16);
 impl std::fmt::Debug for Scenarios {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_tuple("Scenarios")
@@ -228,10 +230,10 @@ pub struct Racer {
 pub struct RacerFrame {
 	pub translation: Vec3,
 	pub rotation: Vec3,
-	pub animation: Arc<str>,
+	pub animation: SmolStr,
 	pub animation_time: f32,
 	pub flags: RacerFrameFlags,
-	pub material_code: Arc<str>,
+	pub material_code: SmolStr,
 	pub cap: Option<RacerFrameCap>,
 	pub effect: Option<RacerFrameEffect>,
 }
@@ -258,7 +260,7 @@ pub struct RacerFrameFlags {
 pub struct RacerFrameCap {
 	translation: Vec3,
 	rotation: Vec3,
-	animation: Arc<str>,
+	animation: SmolStr,
 	animation_time: f32,
 }
 

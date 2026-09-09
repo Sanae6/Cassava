@@ -1,23 +1,18 @@
-use std::{alloc::Layout, collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use cassava_project::stage::Stage;
 use glam::Mat4;
-use gpui::{Context, Div, InteractiveElement, KeyUpEvent};
 use wgpu::{
 	BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
 	BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages, Color, ColorTargetState,
 	ColorWrites, FragmentState, MultisampleState, PipelineCompilationOptions,
 	PipelineLayoutDescriptor, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
 	RenderPipeline, RenderPipelineDescriptor, ShaderStages, TextureView, VertexAttribute,
-	VertexBufferLayout, VertexFormat, VertexState, include_wgsl,
-	util::{BufferInitDescriptor, DeviceExt},
-	wgt::CommandEncoderDescriptor,
+	VertexBufferLayout, VertexFormat, VertexState, include_wgsl, wgt::CommandEncoderDescriptor,
 };
-use zerocopy::{Immutable, IntoBytes};
+use zerocopy::IntoBytes;
 
-use crate::workspace::stage_editor::{Actions, StageEditor, camera::ViewCamera};
-
-use super::StageAction;
+use crate::workspace::stage_editor::{Actions, camera::ViewCamera};
 
 pub struct StageView {
 	device: Arc<wgpu::Device>,
@@ -86,7 +81,7 @@ impl StageView {
 				entry_point: Some("vtx_main"),
 				compilation_options: PipelineCompilationOptions::default(),
 				buffers: &[Some(VertexBufferLayout {
-					array_stride: 0,
+					array_stride: size_of::<Mat4>() as _,
 					attributes: &[
 						VertexAttribute {
 							format: VertexFormat::Float32x4,
@@ -146,7 +141,7 @@ impl StageView {
 			queue,
 			pipeline,
 			camera: ViewCamera::new(),
-			proj_matrix: glam::camera::lh::proj::directx::perspective(
+			proj_matrix: glam::camera::rh::proj::directx::perspective(
 				45.0,
 				surface_width as f32 / surface_height as f32,
 				0.1,
@@ -169,18 +164,18 @@ impl StageView {
 
 		self.surface_width = new_width;
 		self.surface_height = new_height;
-		self.proj_matrix = glam::camera::lh::proj::directx::perspective(
+		self.proj_matrix = glam::camera::rh::proj::directx::perspective(
 			45.0,
 			new_width as f32 / new_height as f32,
 			0.1,
-			50.0,
+			50000.0,
 		);
 	}
 
 	pub fn update(&mut self, actions: &Actions) {
-		if !actions.held(StageAction::Lock) {
-			return;
-		}
+		// if !actions.held(StageAction::Lock) {
+		// 	return;
+		// }
 		self.camera.update(actions);
 	}
 
@@ -191,13 +186,13 @@ impl StageView {
 
 		{
 			let mut pass = cmd.begin_render_pass(&RenderPassDescriptor {
-				label: None,
+				label: Some("awesome render pass"),
 				color_attachments: &[Some(RenderPassColorAttachment {
 					view: &view,
 					depth_slice: None,
 					resolve_target: None,
 					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(Color::RED),
+						load: wgpu::LoadOp::Clear(Color::BLACK),
 						store: wgpu::StoreOp::Store,
 					},
 				})],
@@ -218,11 +213,6 @@ impl StageView {
 			(self.proj_matrix * self.camera.calculate_matrix()).as_bytes(),
 		);
 
-		self.queue.write_buffer(
-			&self.uniform_buffer,
-			0,
-			(self.proj_matrix * self.camera.calculate_matrix()).as_bytes(),
-		);
 		self.queue.submit([cmd.finish()]);
 	}
 }

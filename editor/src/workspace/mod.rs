@@ -1,5 +1,6 @@
 mod explorer;
 mod import_stage;
+mod project;
 pub mod stage_editor;
 
 use std::cell::RefCell;
@@ -12,7 +13,7 @@ use crate::{
 		event::ContextExt,
 		tab_control::{Tab, TabControl},
 	},
-	workspace::explorer::Explorer,
+	workspace::project::ProjectView,
 };
 
 struct ProjectUpdate;
@@ -30,7 +31,6 @@ impl NewTab {
 }
 
 pub struct Workspace {
-	explorer: Entity<Explorer>,
 	tabs: Entity<TabControl>,
 }
 
@@ -38,20 +38,26 @@ impl Workspace {
 	pub fn new(cx: &mut App) -> Entity<Workspace> {
 		cx.new(|cx| {
 			cx.bus_subscribe(|workspace: &mut Self, event: &NewTab, cx| {
-				workspace.tabs.update(cx, |tabs, _| {
-					tabs.add_tab(
+				workspace.tabs.update(cx, |tabs, cx| {
+					let tab_index = tabs.add_tab(
 						event.0.clone(),
 						event
 							.1
 							.borrow_mut()
 							.take()
 							.expect("tab configuration taken already"),
-					)
+					);
+					tabs.select_tab(tab_index, cx);
 				})
 			});
+
 			Self {
-				explorer: Explorer::new(cx),
-				tabs: cx.new(|cx| TabControl::new("workspace", cx)),
+				tabs: cx.new(|cx| {
+					let mut tabs = TabControl::new("workspace", cx);
+					let view = ProjectView::new(cx);
+					tabs.add_tab(view.into(), |tab, _, _| tab.title("Project").closeable(false));
+					tabs
+				}),
 			}
 		})
 	}
@@ -63,13 +69,9 @@ impl Render for Workspace {
 		_: &mut gpui::Window,
 		_: &mut gpui::Context<Self>,
 	) -> impl gpui::IntoElement {
-		div().v_flex().size_full().child(
-			div()
-				.h_flex()
-				.gap_2()
-				.size_full()
-				.child(div().w(px(255.0)).h_full().child(self.explorer.clone()))
-				.child(self.tabs.clone()),
-		)
+		div()
+			.v_flex()
+			.size_full()
+			.child(div().h_flex().gap_2().size_full().child(self.tabs.clone()))
 	}
 }

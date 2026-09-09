@@ -30,6 +30,7 @@ fn main() -> Result<(), bnsh::Error> {
 			match shader_file {
 				Ok(shader_file) => {
 					let variation: &Variation = shader_file.shader_variations.get(0).unwrap();
+					println!("fuck {}", shader_file.shader_variations.len());
 					let program = &variation.binary_program.as_ref().unwrap();
 					let shader = program.vertex_shader.as_ref().unwrap();
 					fs::write("romfs/vsh.control.bin", &shader.control).unwrap();

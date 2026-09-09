@@ -56,8 +56,8 @@ impl Explorer {
 impl Render for Explorer {
 	fn render(
 		&mut self,
-		window: &mut gpui::Window,
-		cx: &mut gpui::Context<Self>,
+		_: &mut gpui::Window,
+		_: &mut gpui::Context<Self>,
 	) -> impl gpui::IntoElement {
 		div()
 			.v_flex()

@@ -1,5 +1,6 @@
 // mod camera;
 mod camera;
+mod hierarchy;
 mod view;
 
 use std::{collections::HashMap, sync::Arc};
@@ -7,14 +8,17 @@ use std::{collections::HashMap, sync::Arc};
 use cassava_project::stage::Stage;
 use glam::Vec2;
 use gpui::{
-	App, FocusHandle, InteractiveElement, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent,
-	MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, StatefulInteractiveElement,
-	Styled, WgpuSurfaceHandle, Window, div, prelude::FluentBuilder, rgb, wgpu_surface,
+	App, Entity, FocusHandle, InteractiveElement, KeyDownEvent, KeyUpEvent, MouseButton,
+	MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
+	StatefulInteractiveElement, Styled, WgpuSurfaceHandle, Window, div, prelude::FluentBuilder, px,
+	rgb, wgpu_surface,
 };
 use wgpu::TextureFormat;
 
 use crate::{
-	components::theme::ThemeExt, project::ProjectAccessor, workspace::stage_editor::view::StageView,
+	components::{StyleExt, theme::ThemeExt},
+	project::ProjectAccessor,
+	workspace::stage_editor::{hierarchy::StageHierarchy, view::StageView},
 };
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
@@ -98,21 +102,25 @@ pub struct StageEditor {
 	view: Option<StageView>,
 	actions: Actions,
 	focus: FocusHandle,
+	hierarchy: Entity<StageHierarchy>,
 }
 
 impl StageEditor {
 	pub fn new(stage_name: &str, window: &mut Window, cx: &mut App) -> Self {
 		let focus = cx.focus_handle();
+		let hierarchy = StageHierarchy::new(stage_name, window, cx);
 		Self {
 			surface: window
 				.create_wgpu_surface(800, 600, TextureFormat::Rgba8UnormSrgb)
 				.expect("unable to create"),
-			stage_name: stage_name.to_owned(),
+			stage_name: stage_name.into(),
 			view: None,
 			actions: Actions::default(),
 			focus,
+			hierarchy,
 		}
 	}
+
 	pub fn stage<'a>(&self, cx: &'a mut App) -> &'a mut Stage {
 		cx.al_project_mut()
 			.get_stage(&self.stage_name)
@@ -168,6 +176,8 @@ impl Render for StageEditor {
 			})
 			.detach();
 		div()
+			.h_flex()
+			.child(div().h_full().w(px(255.0)).child(self.hierarchy.clone()))
 			.child(wgpu_surface(self.surface.clone()).size_full())
 			.bg(cx.theme().pane_bg)
 			.size_full()
