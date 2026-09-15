@@ -18,3 +18,5 @@ ouroboros = "0.18.5"
 wgpu = "30.0.1"
 glam = { workspace = true }
 zerocopy = { workspace = true }
+itertools = "0.15.0"
+half = "2.7.1"

@@ -1,12 +1,12 @@
 #[allow(unused)]
 pub mod bffnt;
 pub mod bfres;
+pub mod bfsha;
 pub mod bnsh;
 pub mod bntx;
 pub mod ptcl;
 pub mod res_dict;
 pub mod user_data;
-mod bfsha;
 
 use snafu::{OptionExt, ResultExt, Snafu};
 
@@ -108,7 +108,9 @@ pub fn read_binary_file_header<'a>(
 			.scope(start, |reader| reader.read_slice(file_size as usize))
 			.context(IncorrectFileSizeSnafu)?,
 	);
-	reader.seek_rel(end_of_header as _).context(FileTooSmallSnafu)?;
+	reader
+		.seek_rel(end_of_header as _)
+		.context(FileTooSmallSnafu)?;
 
 	Ok((
 		BinaryFileInfo {
@@ -124,7 +126,7 @@ pub fn read_binary_file_header<'a>(
 			relocation_table_offset,
 			file_size,
 		},
-		reader
+		reader,
 	))
 }
 

@@ -1,7 +1,8 @@
-use std::{collections::HashMap, num::NonZeroU32};
+use std::num::NonZeroU32;
 
 use bitfield_struct::bitfield;
 use glam::UVec3;
+use indexmap::IndexMap;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
@@ -319,13 +320,13 @@ pub struct TextureInfo {
 	// pub mipmaps: Vec<Vec<Vec<u8>>>,
 	pub image_data: Vec<u8>,
 	pub mip_offsets: Vec<usize>,
-	pub user_data: HashMap<String, UserData>,
+	pub user_data: IndexMap<String, UserData>,
 }
 
 #[derive(Debug)]
 pub struct TextureArchive {
 	pub file_info: BinaryFileInfo,
-	pub textures: HashMap<String, TextureInfo>,
+	pub textures: IndexMap<String, TextureInfo>,
 }
 
 const DICT: [u8; 4] = *b"_DIC";

@@ -34,14 +34,20 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Commands {
-	Dump { in_path: PathBuf, out_dir: PathBuf },
+	Dump { in_path: PathBuf },
+	Gltf { in_path: PathBuf, out_dir: PathBuf },
 }
 
 #[snafu::report]
 fn main() -> Result<(), bfres::Error> {
 	let args = Args::parse();
 	match args.command {
-		Commands::Dump { in_path, out_dir } => {
+		Commands::Dump { in_path } => {
+			let file = fs::read(in_path).unwrap();
+			let model_archive = ModelArchive::read(&mut BinaryReader::new(&file))?;
+			println!("{model_archive:?}")
+		}
+		Commands::Gltf { in_path, out_dir } => {
 			let file = fs::read(in_path).unwrap();
 			let model_archive = ModelArchive::read(&mut BinaryReader::new(&file))?;
 
@@ -50,8 +56,7 @@ fn main() -> Result<(), bfres::Error> {
 			let textures = if let Some(texture) = model_archive.embedded_files.get("textures.bntx") {
 				fs::write(out_dir.join("textures.bntx"), texture).unwrap();
 
-				let texture =
-					TextureArchive::read(&mut BinaryReader::new(texture)).unwrap();
+				let texture = TextureArchive::read(&mut BinaryReader::new(texture)).unwrap();
 				texture
 					.textures
 					.iter()
@@ -349,7 +354,10 @@ fn save_texture(out_dir: &Path, name: &str, texture: &TextureInfo) -> PathBuf {
 	fs::create_dir_all(out_dir.join("textures")).unwrap();
 	println!(
 		"{:?} {:?} {} {}",
-		name, texture.gfx.image_format(), texture.gfx.width, texture.gfx.height
+		name,
+		texture.gfx.image_format(),
+		texture.gfx.width,
+		texture.gfx.height
 	);
 	match texture.gfx.image_format() {
 		(ChannelFormat::BC4, TypeFormat::Unorm) => {

@@ -1,0 +1,22 @@
+===== nn::util::BinaryFileHeader =====
+
+offset | size | type    | description
+-------+------+---------+-----------------------------------------------------------
+0x00   | 0x08 | char[8] | signature ("VFXB    ")
+0x08   | 0x01 | u8      | micro version (0)
+0x09   | 0x01 | u8      | minor version (0)
+0x0a   | 0x02 | u16     | major version (7)
+0x0c   | 0x02 | u16     | byte order mark (0xFEFF for big endian, 0xFFFE for little endian)
+0x0e   | 0x01 | u8      | alignment (actual alignment = 1 << this value)
+0x0f   | 0x01 | u8      | target address size
+0x10   | 0x04 | u32     | offset of filename string relative to this header
+0x14   | 0x02 | u16     | is relocated
+0x16   | 0x02 | u16     | offset of first block relative to this header
+0x18   | 0x04 | u32     | offset of relocation table relative to this header
+0x1c   | 0x04 | u32     | file size
+0x20   |      |         | end
+
+===== nn::g3d::ResShaderArchive =====
+offset | size | type    | description
+-------+------+---------+-----------------------------------------------------------
+0x00

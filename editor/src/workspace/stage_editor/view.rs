@@ -1,18 +1,21 @@
-use std::sync::Arc;
+use std::{fs, path::Path, sync::Arc};
 
 use cassava_project::stage::Stage;
 use glam::Mat4;
 use wgpu::{
 	BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
 	BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages, Color, ColorTargetState,
-	ColorWrites, FragmentState, MultisampleState, PipelineCompilationOptions,
-	PipelineLayoutDescriptor, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
-	RenderPipeline, RenderPipelineDescriptor, ShaderStages, TextureView, VertexAttribute,
-	VertexBufferLayout, VertexFormat, VertexState, include_wgsl, wgt::CommandEncoderDescriptor,
+	ColorWrites, DepthBiasState, DepthStencilState, Extent3d, FragmentState, MultisampleState,
+	Operations, PipelineCache, PipelineCacheDescriptor, PipelineCompilationOptions,
+	PipelineLayoutDescriptor, PrimitiveState, RenderPassColorAttachment,
+	RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+	ShaderStages, StencilState, Texture, TextureDimension, TextureFormat, TextureUsages, TextureView,
+	VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode, include_wgsl,
+	wgt::{CommandEncoderDescriptor, TextureDescriptor, TextureViewDescriptor},
 };
 use zerocopy::IntoBytes;
 
-use crate::workspace::stage_editor::{Actions, camera::ViewCamera};
+use crate::workspace::stage_editor::{Actions, camera::ViewCamera, object::Object};
 
 pub struct StageView {
 	device: Arc<wgpu::Device>,
@@ -21,13 +24,13 @@ pub struct StageView {
 	camera: ViewCamera,
 	proj_matrix: Mat4,
 	uniform_buffer: Buffer,
-	instance_buffer: Buffer,
-	instances: Vec<Mat4>,
 	bind_group: BindGroup,
+	depth_texture: Texture,
+	objects: Vec<Object>,
 
 	surface_width: u32,
 	surface_height: u32,
-	_surface_color_format: wgpu::TextureFormat,
+	_surface_color_format: TextureFormat,
 }
 
 impl StageView {
@@ -36,8 +39,9 @@ impl StageView {
 		queue: Arc<wgpu::Queue>,
 		surface_width: u32,
 		surface_height: u32,
-		surface_color_format: wgpu::TextureFormat,
+		surface_color_format: TextureFormat,
 		stage: &Stage,
+		romfs_path: &Path,
 	) -> Self {
 		let wgsl = device.create_shader_module(include_wgsl!("./shader.wgsl"));
 
@@ -68,9 +72,27 @@ impl StageView {
 				resource: uniform_buffer.as_entire_binding(),
 			}],
 		});
+		let (pipeline_cache, cache_file) =
+			if let Some(filename) = wgpu::util::pipeline_cache_key(&device.adapter_info()) {
+				let cache_path = Path::new("/tmp").join(&filename);
+				// If we failed to read the cache, for whatever reason, treat the data as lost.
+				// In a real app, we'd probably avoid caching entirely unless the error was "file not found".
+				let cache_data = std::fs::read(&cache_path).ok();
+				let pipeline_cache = unsafe {
+					device.create_pipeline_cache(&PipelineCacheDescriptor {
+						data: cache_data.as_deref(),
+						label: None,
+						fallback: true,
+					})
+				};
+				(Some(pipeline_cache), Some(cache_path))
+			} else {
+				(None, None)
+			};
+
 		let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
 			label: Some("stage view pipeline layout"),
-			bind_group_layouts: &[Some(&bind_group_layout)],
+			bind_group_layouts: &[Some(&bind_group_layout), Some(&bind_group_layout)],
 			immediate_size: 0,
 		});
 		let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -80,35 +102,43 @@ impl StageView {
 				module: &wgsl,
 				entry_point: Some("vtx_main"),
 				compilation_options: PipelineCompilationOptions::default(),
-				buffers: &[Some(VertexBufferLayout {
-					array_stride: size_of::<Mat4>() as _,
-					attributes: &[
-						VertexAttribute {
-							format: VertexFormat::Float32x4,
-							offset: 16 * 0,
+				buffers: &[
+					Some(VertexBufferLayout {
+						array_stride: 12,
+						step_mode: VertexStepMode::Vertex,
+						attributes: &[VertexAttribute {
+							format: VertexFormat::Float32x3,
+							offset: 0,
 							shader_location: 0,
-						},
-						VertexAttribute {
-							format: VertexFormat::Float32x4,
-							offset: 16 * 2,
-							shader_location: 1,
-						},
-						VertexAttribute {
-							format: VertexFormat::Float32x4,
-							offset: 16 * 2,
-							shader_location: 2,
-						},
-						VertexAttribute {
-							format: VertexFormat::Float32x4,
-							offset: 16 * 3,
+						}],
+					}),
+					Some(VertexBufferLayout {
+						array_stride: 12,
+						step_mode: VertexStepMode::Vertex,
+						attributes: &[VertexAttribute {
+							format: VertexFormat::Float32x3,
+							offset: 0,
 							shader_location: 3,
-						},
-					],
-					step_mode: wgpu::VertexStepMode::Instance,
-				})],
+						}],
+					}),
+				],
 			},
-			primitive: PrimitiveState::default(),
-			depth_stencil: None,
+			primitive: PrimitiveState {
+				topology: wgpu::PrimitiveTopology::TriangleList,
+				strip_index_format: None,
+				front_face: wgpu::FrontFace::Ccw,
+				cull_mode: Some(wgpu::Face::Back),
+				unclipped_depth: false,
+				polygon_mode: wgpu::PolygonMode::Fill,
+				conservative: false,
+			},
+			depth_stencil: Some(DepthStencilState {
+				format: TextureFormat::Depth32Float,
+				depth_write_enabled: Some(true),
+				depth_compare: Some(wgpu::CompareFunction::Less),
+				stencil: StencilState::default(),
+				bias: DepthBiasState::default(),
+			}),
 			multisample: MultisampleState::default(),
 			fragment: Some(FragmentState {
 				module: &wgsl,
@@ -124,17 +154,44 @@ impl StageView {
 			cache: None,
 		});
 
-		let mut instances = Vec::new();
-		for (_, entity) in &stage.entities {
-			instances.push(Mat4::from_translation(entity.transform.translation));
-		}
-		let instance_buffer = device.create_buffer(&BufferDescriptor {
-			label: Some("stage view instance buffer"),
-			usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-			size: instances.as_bytes().len() as _,
-			mapped_at_creation: false,
+		let depth_texture = device.create_texture(&TextureDescriptor {
+			label: Some("stage view depth texture"),
+			size: Extent3d {
+				width: surface_width,
+				height: surface_height,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: TextureDimension::D2,
+			format: TextureFormat::Depth32Float,
+			usage: TextureUsages::RENDER_ATTACHMENT,
+			view_formats: &[TextureFormat::Depth32Float],
 		});
-		queue.write_buffer(&instance_buffer, 0, instances.as_bytes());
+
+		if let (Some(pipeline_cache), Some(cache_file)) = (pipeline_cache, cache_file) {
+			let data = pipeline_cache.get_data();
+			if let Some(data) = data {
+				let temp_file = cache_file.with_extension("temp");
+				std::fs::write(&temp_file, &data).unwrap();
+				std::fs::rename(&temp_file, &cache_file).unwrap();
+			}
+		}
+
+		let mut objects = Vec::new();
+		let object_data = romfs_path.join("ObjectData");
+		for (_, entity) in &stage.entities {
+			// let object_name = entity.object_name;
+			let object_path = object_data.join(format!("{}.szs", entity.object_name));
+			let object = Object::new(
+				&object_path,
+				&device,
+				&queue,
+				&bind_group_layout,
+				entity.transform,
+			);
+			objects.push(object);
+		}
 
 		Self {
 			device,
@@ -148,9 +205,9 @@ impl StageView {
 				10000.0,
 			),
 			uniform_buffer,
-			instance_buffer,
-			instances,
+			objects,
 			bind_group,
+			depth_texture,
 			surface_width,
 			surface_height,
 			_surface_color_format: surface_color_format,
@@ -170,6 +227,20 @@ impl StageView {
 			0.1,
 			50000.0,
 		);
+		self.depth_texture = self.device.create_texture(&TextureDescriptor {
+			label: Some("stage view depth texture"),
+			size: Extent3d {
+				width: new_width,
+				height: new_height,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: TextureDimension::D2,
+			format: TextureFormat::Depth32Float,
+			usage: TextureUsages::RENDER_ATTACHMENT,
+			view_formats: &[TextureFormat::Depth32Float],
+		})
 	}
 
 	pub fn update(&mut self, actions: &Actions) {
@@ -196,15 +267,26 @@ impl StageView {
 						store: wgpu::StoreOp::Store,
 					},
 				})],
-				depth_stencil_attachment: None,
+				depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+					view: &self.depth_texture.create_view(&TextureViewDescriptor {
+						..Default::default()
+					}),
+					depth_ops: Some(Operations {
+						load: wgpu::LoadOp::Clear(1.0),
+						store: wgpu::StoreOp::Store,
+					}),
+					stencil_ops: None,
+				}),
 				timestamp_writes: None,
 				occlusion_query_set: None,
 				multiview_mask: None,
 			});
 			pass.set_bind_group(0, &self.bind_group, &[]);
 			pass.set_pipeline(&self.pipeline);
-			pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-			pass.draw(0..3, 0..self.instances.len() as u32);
+
+			for object in &self.objects {
+				object.draw(&mut pass);
+			}
 		}
 
 		self.queue.write_buffer(

@@ -37,7 +37,12 @@ impl ViewCamera {
 			(x_rot * y_rot).mul_vec3(Vec3::new(-x_axis as f32, 0.0, z_axis as f32))
 				+ Vec3::Y * y_axis as f32;
 
-		self.position += movement_direction * 10.0;
+		let speed = if actions.held(super::StageAction::Faster) {
+			50.0
+		} else {
+			10.0
+		};
+		self.position += movement_direction * speed;
 	}
 
 	pub fn calculate_matrix(&self) -> Mat4 {

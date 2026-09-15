@@ -1,6 +1,6 @@
 use std::{
 	backtrace::Backtrace,
-	collections::{HashMap, HashSet},
+	collections::HashSet,
 	ptr,
 	sync::Arc,
 };
@@ -473,14 +473,14 @@ impl Byml {
 		writer.write_u32(hash_table_offset);
 		writer.write_u32(string_table_offset);
 
-		let mut container_offsets = HashMap::new();
+		let mut container_offsets = IndexMap::new();
 		let mut offset = 16 + string_table_size + hash_table_size;
 		for container in tables.containers {
 			let size = container.byte_size().context(TooLargeSnafu)?;
 			container_offsets.insert(container, offset);
 			offset += size;
 		}
-		writer.write_u32(*container_offsets.get(&root_node).unwrap() as u32);
+		writer.write_u32(*container_offsets.get(root_node).unwrap() as u32);
 
 		let mut write_sorted_string_table = |offset: usize, strings: &[SmolStr]| {
 			writer.seek(offset);
@@ -567,7 +567,7 @@ impl Byml {
 		writer: &mut BinaryWriter,
 		value: &Element,
 		strings: &[SmolStr],
-		container_offsets: &HashMap<Container, usize>,
+		container_offsets: &IndexMap<Container, usize>,
 		long_type_offsets: &IndexMap<LongElement, usize>,
 	) {
 		match value {

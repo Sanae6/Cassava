@@ -6,7 +6,7 @@ mod import;
 use std::{fs, path::Path};
 
 use bitfield_struct::bitfield;
-use glam::Vec3;
+use glam::{EulerRot, Mat4, Quat, Vec3};
 use indexmap::{IndexMap, IndexSet};
 use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
@@ -138,7 +138,9 @@ pub struct Entity {
 	pub params: IndexMap<String, Parameter>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+pub const EULER_ROT: EulerRot = glam::EulerRot::XYZEx;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Transform {
 	/// The translation of an entity from the origin.
 	pub translation: Vec3,
@@ -146,6 +148,21 @@ pub struct Transform {
 	pub rotation: Vec3,
 	/// The scale of an entity.
 	pub scale: Vec3,
+}
+
+impl Transform {
+	pub fn into_mat4(self) -> Mat4 {
+		Mat4::from_scale_rotation_translation(
+			self.scale,
+			Quat::from_euler(
+				EULER_ROT,
+				self.rotation.x.to_radians(),
+				self.rotation.y.to_radians(),
+				self.rotation.z.to_radians(),
+			),
+			self.translation,
+		)
+	}
 }
 
 impl Default for Transform {
@@ -197,7 +214,7 @@ pub struct Camera {
 	pub parameters: IndexMap<SmolStr, Parameter>,
 }
 
-/// Essential types and values of an entity or camera's parameters.
+/// Describes an entity or camera's parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Parameter {
 	String(SmolStr),
@@ -216,10 +233,13 @@ pub struct KoopaFreerunning {
 
 #[derive(Debug, Clone, Copy, Hash, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RacerLevel {
+	/// A racer which is available on every difficulty
 	Unspecified,
+	/// A racer which is available on a specific difficulty
 	Level(u8),
 }
 
+/// An individual KFR racer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Racer {
 	pub capture_name: Option<String>,
@@ -242,18 +262,18 @@ pub struct RacerFrame {
 #[derive(Serialize, Deserialize)]
 pub struct RacerFrameFlags {
 	#[bits(1)]
-	_padding: u8,
-	landing_reaction: bool,
-	big_landing_reaction: bool,
+	_unused: u8,
+	pub landing_hit_reaction: bool,
+	pub running_land_hit_reaction: bool,
 	#[bits(3)]
-	unknown: u8,
-	splash: bool,
-	big_splash: bool,
-	wet: bool,
-	water: bool,
-	puddle: bool,
+	pub unknown: u8,
+	pub splash: bool,
+	pub big_splash: bool,
+	pub wet: bool,
+	pub water: bool,
+	pub puddle: bool,
 	#[bits(5)]
-	_padding: u8,
+	_unused: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

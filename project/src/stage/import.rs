@@ -272,6 +272,14 @@ impl Stage {
 			)?;
 		}
 
+		let mut layer_folders: Vec<Node> = layer_folders.into_values().map(Node::Folder).collect();
+		layer_folders.sort_by_key(|node| {
+			let Node::Folder(folder) = node else {
+				unreachable!()
+			};
+			folder.name.clone()
+		});
+
 		let koopa_freerunning = Self::import_koopas(&map_archive)?;
 
 		Ok(Self {
@@ -279,7 +287,7 @@ impl Stage {
 			root: Folder {
 				name: stage_name.into(),
 				scenarios: None,
-				children: layer_folders.into_values().map(Node::Folder).collect(),
+				children: layer_folders,
 			},
 			design_files,
 			default_camera,

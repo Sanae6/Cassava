@@ -13,7 +13,8 @@ use std::{
 };
 
 use cassava_project::ALProject;
-use gpui::{App, Application, Window, WindowOptions, prelude::*};
+use gpui::{App, Application, WgpuOptions, Window, WindowOptions, prelude::*};
+use wgpu::Features;
 
 use crate::{
 	components::{event::EventBus, gallery::Gallery, root::Root, theme::Theme},
@@ -35,7 +36,10 @@ fn refresh(window: &mut Window, _: &mut App) {
 fn main() {
 	// Application::new().run(|cx| {
 	// });
-	Application::new().run(|cx| {
+	Application::with_wgpu_options(WgpuOptions {
+		additional_features: Features::PIPELINE_CACHE,
+	})
+	.run(|cx| {
 		Theme::register(cx);
 		Config::register(cx);
 		EventBus::register(cx);

@@ -1,5 +1,6 @@
-use std::{collections::HashMap, convert::Infallible};
+use std::convert::Infallible;
 
+use indexmap::IndexMap;
 use snafu::{OptionExt, Snafu};
 
 use crate::util::{self, BinaryReader};
@@ -28,7 +29,7 @@ pub enum DictError<E: snafu::Error + snafu::ErrorCompat + 'static> {
 	InvalidMagic,
 }
 
-pub type Dict<T> = HashMap<String, T>;
+pub type Dict<T> = IndexMap<String, T>;
 
 pub fn read_dict<'a, T: 'a, E: snafu::Error + snafu::ErrorCompat + From<util::Error>>(
 	reader: &mut BinaryReader<'a>,

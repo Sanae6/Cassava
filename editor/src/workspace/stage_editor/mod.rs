@@ -2,6 +2,7 @@
 mod camera;
 mod hierarchy;
 mod view;
+mod object;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -16,9 +17,7 @@ use gpui::{
 use wgpu::TextureFormat;
 
 use crate::{
-	components::{StyleExt, theme::ThemeExt},
-	project::ProjectAccessor,
-	workspace::stage_editor::{hierarchy::StageHierarchy, view::StageView},
+	components::{StyleExt, theme::ThemeExt}, config::ConfigAccessor, project::ProjectAccessor, workspace::stage_editor::{hierarchy::StageHierarchy, view::StageView}
 };
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
@@ -31,6 +30,7 @@ enum StageAction {
 	MoveDown,
 	Select,
 	Lock,
+	Faster,
 }
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum ActionState {
@@ -140,6 +140,7 @@ impl Render for StageEditor {
 		cx: &mut gpui::Context<Self>,
 	) -> impl gpui::IntoElement {
 		if let Some((texture_view, (w, h))) = self.surface.back_view_with_size() {
+			let romfs_path = cx.config().default_romfs_dir.clone().unwrap();
 			let stage = cx
 				.al_project_mut()
 				.get_stage(&self.stage_name)
@@ -149,7 +150,7 @@ impl Render for StageEditor {
 				let device = Arc::new(self.surface.device().clone());
 				let queue = Arc::new(self.surface.queue().clone());
 				let format = self.surface.format();
-				StageView::new(device, queue, w, h, format, stage)
+				StageView::new(device, queue, w, h, format, stage, &romfs_path)
 			});
 
 			view.try_resize(w, h);
@@ -184,6 +185,9 @@ impl Render for StageEditor {
 			.focusable()
 			.track_focus(&self.focus)
 			.on_key_up(cx.listener(|editor, up: &KeyUpEvent, window, _| {
+				if !up.keystroke.modifiers.shift {
+					editor.actions.update_action(StageAction::Faster, false);
+				}
 				let Some(action) = Actions::match_key(&up.keystroke.key) else {
 					return;
 				};
@@ -194,6 +198,9 @@ impl Render for StageEditor {
 			.on_key_down(cx.listener(|editor, down: &KeyDownEvent, window, _| {
 				if down.is_held {
 					return;
+				}
+				if down.keystroke.modifiers.shift {
+					editor.actions.update_action(StageAction::Faster, true);
 				}
 				let Some(action) = Actions::match_key(&down.keystroke.key) else {
 					return;

@@ -1,6 +1,6 @@
 use std::fs;
 use std::ops::Range;
-use std::{collections::HashMap, path::Path};
+use std::path::Path;
 
 use indexmap::IndexMap;
 use snafu::prelude::*;
@@ -281,7 +281,7 @@ impl Writer {
 		self.files.sort_by(|a, b| a.hash.cmp(&b.hash));
 
 		let mut max_alignment = 0;
-		let mut hash_counts = HashMap::new();
+		let mut hash_counts = IndexMap::new();
 		for (idx, file) in self.files.iter().enumerate() {
 			writer.align_up(4)?;
 			let string_pos = writer.position();

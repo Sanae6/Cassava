@@ -2,7 +2,8 @@
 use std::{fs, path::PathBuf};
 
 use cassava::{
-	nw::bnsh::{self, ShaderFile, Variation}, util::{BinaryReader, ByteOrder}
+	nw::bnsh::{self, ShaderContainer, Variation},
+	util::{BinaryReader, ByteOrder},
 };
 
 use clap::{Parser, Subcommand};
@@ -26,7 +27,7 @@ fn main() -> Result<(), bnsh::Error> {
 	match args.command {
 		Commands::Dump { in_path } => {
 			let file = fs::read(in_path).unwrap();
-			let shader_file = ShaderFile::read(&mut BinaryReader::new(&file));
+			let shader_file = ShaderContainer::read(&mut BinaryReader::new(&file));
 			match shader_file {
 				Ok(shader_file) => {
 					let variation: &Variation = shader_file.shader_variations.get(0).unwrap();

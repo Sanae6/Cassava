@@ -18,13 +18,16 @@ impl<T: ProjectAsset> DiskRef<T> {
 	pub fn load(&mut self, root_dir: &Path) -> Result<&mut T, Whatever> {
 		match &mut self.value {
 			Some(value) => Ok(value),
-			opt @ None => Ok(opt.insert(T::load(&self.path.to_logical_path(root_dir))?)),
+			opt @ None => Ok(opt.insert(T::load(
+				&std::path::absolute(root_dir.join(self.path.to_logical_path(&root_dir))).unwrap(),
+			)?)),
 		}
 	}
 
 	pub fn save(&self, root_dir: &Path) -> Result<(), Whatever> {
 		match &self.value {
-			Some(value) => value.save(&root_dir.join(self.path.to_logical_path(&root_dir))),
+			Some(value) => value
+				.save(&std::path::absolute(root_dir.join(self.path.to_logical_path(&root_dir))).unwrap()),
 			None => {
 				tracing::warn!("{} was not loaded, not attempting save", self.path);
 				Ok(())
@@ -76,10 +79,10 @@ impl<'de, T: ProjectAsset> Deserialize<'de> for DiskRef<T> {
 
 impl ProjectAsset for Vec<u8> {
 	fn load(path: &Path) -> Result<Self, Whatever> {
-		fs::read(path).whatever_context("failed to read data")
+		fs::read(path).with_whatever_context(|_| format!("failed to read data from {path:?}"))
 	}
 
 	fn save(&self, path: &Path) -> Result<(), Whatever> {
-		fs::write(path, self).whatever_context("failed to write data")
+		fs::write(path, self).with_whatever_context(|_| format!("failed to write data to {path:?}"))
 	}
 }

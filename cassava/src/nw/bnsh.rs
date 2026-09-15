@@ -33,7 +33,7 @@ pub enum Error {
 }
 
 #[derive(Debug)]
-pub struct ShaderFile {
+pub struct ShaderContainer {
 	pub file_info: BinaryFileInfo,
 	pub target_api_type: u16,
 	pub target_api_version: u16,
@@ -108,8 +108,8 @@ impl std::fmt::Debug for Shader {
 	}
 }
 
-impl ShaderFile {
-	pub fn read(reader: &mut BinaryReader) -> Result<ShaderFile, Error> {
+impl ShaderContainer {
+	pub fn read(reader: &mut BinaryReader) -> Result<ShaderContainer, Error> {
 		let (file_info, header, mut reader) =
 			read_binary_file_header(reader, Some(*b"BNSH\0\0\0\0")).context(FileHeaderSnafu)?;
 
@@ -130,17 +130,6 @@ impl ShaderFile {
 		let shader_variation_array = reader.read_u64()? as usize;
 		let _shader_binary_pool = reader.read_u64()? as usize;
 		let low_level_compiler_version = reader.read_u64()?;
-
-		// let memory_pool = reader.scope(shader_binary_pool, |reader| -> Result<_, Error> {
-		// 	println!("memory pool at {:04X}", reader.position());
-		// 	let _property = reader.read_u32()?;
-		// 	let size = reader.read_u32()?;
-		// 	let offset = reader.read_u64()?;
-
-		// 	let memory_pool = reader.scope(offset as usize, |reader| reader.read_slice(size as usize))?;
-
-		// 	Ok(memory_pool)
-		// })?;
 
 		let shader_variations = reader.scope(shader_variation_array, |reader| {
 			reader.read_vec(shader_variation_count, |reader, _| -> Result<_, Error> {
@@ -165,7 +154,7 @@ impl ShaderFile {
 		})?;
 		// println!("{file_info:#?} {header:?}");
 
-		Ok(ShaderFile {
+		Ok(ShaderContainer {
 			file_info,
 			target_api_type,
 			target_api_version,
@@ -181,7 +170,6 @@ impl ShaderFile {
 		let code_type = CodeType::from_u8(reader.read_u8()?).context(InvalidCodeTypeSnafu)?;
 		let source_format =
 			SourceFormat::from_u8(reader.read_u8()?).context(InvalidSourceFormatSnafu)?;
-		println!("program! {:X}", reader.position());
 		reader.seek_rel(1)?;
 		let binary_format = reader.read_u32()?;
 		let vertex_shader = reader.read_u64()? as usize;
@@ -237,7 +225,6 @@ impl ShaderFile {
 		let mut control = reader.scope(control, |reader| {
 			reader.read_slice(control_size).map(<[_]>::to_vec)
 		})?;
-		println!("{control_size:X} {data_size:X} {decomposed_control:X}");
 		let data = reader.scope(data, |reader| {
 			reader.read_slice(data_size).map(<[_]>::to_vec)
 		})?;
@@ -250,9 +237,7 @@ impl ShaderFile {
 				let pragma = reader.read_u64()? as usize;
 				let locals = reader.read_u64()? as usize;
 				let uniform_64 = reader.read_u64()? as usize;
-				println!("im a readering {metadata:X} {:X}", reader.len());
 				reader.subfile_scope(metadata, |reader| {
-					println!("metadata!");
 					reader.seek(20)?;
 					let asm_offset = reader.read_u32()? as usize;
 					let asm_size = reader.read_u32()? as usize;
@@ -267,7 +252,6 @@ impl ShaderFile {
 					reader.seek(2024)?;
 					let uniform_64_offset = reader.read_u32()? as usize;
 					let uniform_64_size = reader.read_u32()? as usize;
-					println!("offsets and sizes read!");
 
 					let range = |offset: usize, size: usize| offset..offset + size;
 					control[range(0, 20)].copy_from_slice(reader.read_slice_at(metadata, 20)?);

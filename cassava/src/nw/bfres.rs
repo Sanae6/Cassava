@@ -1,10 +1,11 @@
-use std::{collections::HashMap, ops::Range};
+use std::ops::Range;
 
 use bitfield_struct::bitfield;
 use glam::{
 	BVec2, BVec3, BVec4, IVec2, IVec3, IVec4, Mat2, Mat3, Mat4, Quat, UVec2, UVec3, UVec4, Vec2,
 	Vec3, Vec4,
 };
+use indexmap::IndexMap;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
@@ -259,7 +260,7 @@ impl std::fmt::Debug for ModelArchive {
 					.embedded_files
 					.iter()
 					.map(|key| (key.0, key.1.len()))
-					.collect::<HashMap<_, _>>(),
+					.collect::<IndexMap<_, _>>(),
 			)
 			.finish()
 	}
@@ -867,19 +868,24 @@ impl ModelArchive {
 		let (embedded_file_array, embedded_file_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
 
-		let memory_pool = reader.scope(memory_pool_offset, |reader| -> Result<_, Error> {
-			let _property = reader.read_u32()?;
-			let size = reader.read_u32()?;
-			let offset = reader.read_u64()?;
+		let memory_pool = (memory_pool_offset != 0)
+			.then(|| {
+				reader.scope(memory_pool_offset, |reader| -> Result<_, Error> {
+					let _property = reader.read_u32()?;
+					let size = reader.read_u32()?;
+					let offset = reader.read_u64()?;
+					println!("{size:X} {offset:X} {:X}", reader.len());
 
-			let memory_pool = reader.scope(offset as usize, |reader| {
-				reader
-					.read_slice(size as usize)
-					.map(<[_]>::to_vec)
-			})?;
+					let memory_pool = reader.scope(offset as usize, |reader| {
+						reader.read_slice(size as usize).map(<[_]>::to_vec)
+					})?;
 
-			Ok(memory_pool)
-		})?;
+					Ok(memory_pool)
+				})
+			})
+			.transpose()?
+			.unwrap_or_default();
+		
 		let models = read_dict::<_, ModelError>(
 			&mut reader,
 			model_array,

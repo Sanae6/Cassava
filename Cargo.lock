@@ -804,6 +804,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cassava-cli"
+version = "0.1.0"
+dependencies = [
+ "cassava",
+ "clap",
+]
+
+[[package]]
 name = "cassava-editor"
 version = "0.1.0"
 dependencies = [
@@ -813,7 +821,9 @@ dependencies = [
  "directories",
  "glam",
  "gpui-ce",
+ "half",
  "heapless",
+ "itertools 0.15.0",
  "ouroboros",
  "rfd",
  "serde",

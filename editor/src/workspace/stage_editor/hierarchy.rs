@@ -26,7 +26,7 @@ impl StageHierarchy {
 		);
 
 		cx.new(|cx| Self {
-			tree_view: state.build(cx, px(16.0)),
+			tree_view: state.build(cx, px(32.0)),
 			stage_name: stage_name.into(),
 		})
 	}

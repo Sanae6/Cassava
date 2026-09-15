@@ -1,15 +1,9 @@
 #![feature(trim_prefix_suffix)]
 
-use std::{
-	collections::{HashMap, HashSet},
-	env::args,
-	fs,
-	path::Path,
-	ptr,
-};
+use std::{env::args, fs, path::Path};
 
 use cassava::{
-	byaml::{self, Byml, Container, Element},
+	byaml::{Byml, Element},
 	sarc,
 	util::{ArcAtomicRefCellExt, BinaryReader},
 	yaz0,
