@@ -15,7 +15,12 @@ use wgpu::{
 };
 use zerocopy::IntoBytes;
 
-use crate::workspace::stage_editor::{Actions, camera::ViewCamera, object::Object};
+use crate::workspace::stage_editor::{
+	Actions,
+	camera::ViewCamera,
+	object::Object,
+	shaders::{SHADER_OPTIONS, ShaderOptions},
+};
 
 pub struct StageView {
 	device: Arc<wgpu::Device>,
@@ -43,7 +48,13 @@ impl StageView {
 		stage: &Stage,
 		romfs_path: &Path,
 	) -> Self {
-		let wgsl = device.create_shader_module(include_wgsl!("./shader.wgsl"));
+		let wgsl = device.create_shader_module(
+			ShaderOptions {
+				textured: false,
+				vertex_colours: false,
+			}
+			.into(),
+		);
 
 		let uniform_buffer = device.create_buffer(&BufferDescriptor {
 			label: Some("stage view uniform buffer"),
@@ -90,70 +101,6 @@ impl StageView {
 				(None, None)
 			};
 
-		let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-			label: Some("stage view pipeline layout"),
-			bind_group_layouts: &[Some(&bind_group_layout), Some(&bind_group_layout)],
-			immediate_size: 0,
-		});
-		let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-			label: Some("stage view pipeline"),
-			layout: Some(&pipeline_layout),
-			vertex: VertexState {
-				module: &wgsl,
-				entry_point: Some("vtx_main"),
-				compilation_options: PipelineCompilationOptions::default(),
-				buffers: &[
-					Some(VertexBufferLayout {
-						array_stride: 12,
-						step_mode: VertexStepMode::Vertex,
-						attributes: &[VertexAttribute {
-							format: VertexFormat::Float32x3,
-							offset: 0,
-							shader_location: 0,
-						}],
-					}),
-					Some(VertexBufferLayout {
-						array_stride: 12,
-						step_mode: VertexStepMode::Vertex,
-						attributes: &[VertexAttribute {
-							format: VertexFormat::Float32x3,
-							offset: 0,
-							shader_location: 3,
-						}],
-					}),
-				],
-			},
-			primitive: PrimitiveState {
-				topology: wgpu::PrimitiveTopology::TriangleList,
-				strip_index_format: None,
-				front_face: wgpu::FrontFace::Ccw,
-				cull_mode: Some(wgpu::Face::Back),
-				unclipped_depth: false,
-				polygon_mode: wgpu::PolygonMode::Fill,
-				conservative: false,
-			},
-			depth_stencil: Some(DepthStencilState {
-				format: TextureFormat::Depth32Float,
-				depth_write_enabled: Some(true),
-				depth_compare: Some(wgpu::CompareFunction::Less),
-				stencil: StencilState::default(),
-				bias: DepthBiasState::default(),
-			}),
-			multisample: MultisampleState::default(),
-			fragment: Some(FragmentState {
-				module: &wgsl,
-				entry_point: Some("frag_main"),
-				compilation_options: PipelineCompilationOptions::default(),
-				targets: &[Some(ColorTargetState {
-					format: surface_color_format,
-					blend: None,
-					write_mask: ColorWrites::COLOR,
-				})],
-			}),
-			multiview_mask: None,
-			cache: None,
-		});
-
 		let depth_texture = device.create_texture(&TextureDescriptor {
 			label: Some("stage view depth texture"),
 			size: Extent3d {
@@ -178,6 +125,7 @@ impl StageView {
 			}
 		}
 
+		let bind_group_layout = Object::bind_group(&device);
 		let mut objects = Vec::new();
 		let object_data = romfs_path.join("ObjectData");
 		for (_, entity) in &stage.entities {

@@ -13,3 +13,4 @@ resources that i depend on for information about file formats
   - [Implementation in BntxLibrary2](https://github.com/Hengle/BntxLibrary2/) by [Hengle](https://github.com/Hengle)
   - [Overview of BCn texture compression](https://www.reedbeta.com/blog/understanding-bcn-texture-compression-formats/) by [Nathan Reed](https://www.reedbeta.com/)
 - [BFSHA documentation on Wexos's Wiki](https://wiki.wexosmk.xyz/index.php/BFSHA_(File_Format))
+- [BFSAR documentation on Kinnay's mdbook](https://nintendo-formats.com/libs/nw/bfsar.html)

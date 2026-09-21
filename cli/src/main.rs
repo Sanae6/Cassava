@@ -5,6 +5,7 @@ use std::{
 
 use cassava::{
 	nw::{
+		bfsar::SoundArchive,
 		bfsha::ShaderArchive,
 		bnsh::{self, ShaderContainer},
 	},
@@ -28,6 +29,9 @@ enum Format {
 	Bnsh {
 		#[command(subcommand)]
 		command: Commands,
+	},
+	Bfsar {
+		in_path: PathBuf,
 	},
 }
 
@@ -77,11 +81,19 @@ fn main() {
 						program_type: &str,
 						path: &Path,
 					) {
-						let control_path = path.join(format!("{file_name}.{variation}.{shader_type}.{program_type}.ctl.bin"));
-						let data_path = path.join(format!("{file_name}.{variation}.{shader_type}.{program_type}.data.bin"));
-						println!("writing control {variation} of {shader_type} in {program_type} to {control_path:?}");
+						let control_path = path.join(format!(
+							"{file_name}.{variation}.{shader_type}.{program_type}.ctl.bin"
+						));
+						let data_path = path.join(format!(
+							"{file_name}.{variation}.{shader_type}.{program_type}.data.bin"
+						));
+						println!(
+							"writing control {variation} of {shader_type} in {program_type} to {control_path:?}"
+						);
 						fs::write(control_path, &shader.control).unwrap();
-						println!("writing data {variation} of {shader_type} in {program_type} to {data_path:?}");
+						println!(
+							"writing data {variation} of {shader_type} in {program_type} to {data_path:?}"
+						);
 						fs::write(data_path, &shader.data).unwrap();
 					}
 					fn write_program(
@@ -91,12 +103,38 @@ fn main() {
 						program_type: &str,
 						path: &Path,
 					) {
-						program.vertex_shader.as_ref().map(|shader| write_shader(&shader, file_name, variation, "vertex", program_type, path));
-						program.hull_shader.as_ref().map(|shader| write_shader(&shader, file_name, variation, "hull", program_type, path));
-						program.fragment_shader.as_ref().map(|shader| write_shader(&shader, file_name, variation, "fragment", program_type, path));
-						program.geometry_shader.as_ref().map(|shader| write_shader(&shader, file_name, variation, "geometry", program_type, path));
-						program.domain_shader.as_ref().map(|shader| write_shader(&shader, file_name, variation, "domain", program_type, path));
-						program.compute_shader.as_ref().map(|shader| write_shader(&shader, file_name, variation, "compute", program_type, path));
+						program.vertex_shader.as_ref().map(|shader| {
+							write_shader(&shader, file_name, variation, "vertex", program_type, path)
+						});
+						program.hull_shader.as_ref().map(|shader| {
+							write_shader(&shader, file_name, variation, "hull", program_type, path)
+						});
+						program.fragment_shader.as_ref().map(|shader| {
+							write_shader(
+								&shader,
+								file_name,
+								variation,
+								"fragment",
+								program_type,
+								path,
+							)
+						});
+						program.geometry_shader.as_ref().map(|shader| {
+							write_shader(
+								&shader,
+								file_name,
+								variation,
+								"geometry",
+								program_type,
+								path,
+							)
+						});
+						program.domain_shader.as_ref().map(|shader| {
+							write_shader(&shader, file_name, variation, "domain", program_type, path)
+						});
+						program.compute_shader.as_ref().map(|shader| {
+							write_shader(&shader, file_name, variation, "compute", program_type, path)
+						});
 					}
 					variation
 						.binary_program
@@ -113,5 +151,10 @@ fn main() {
 				}
 			}
 		},
+		Format::Bfsar { in_path } => {
+			let data = fs::read(in_path).unwrap();
+			let archive = SoundArchive::read(&mut BinaryReader::new(&data)).unwrap();
+			println!("{archive:?}")
+		}
 	}
 }

@@ -11,13 +11,18 @@ use glam::Vec3;
 use half::f16;
 use itertools::{Itertools, TupleWindows};
 use wgpu::{
-	BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, Buffer, BufferUsages, Device,
-	IndexFormat, PipelineCache, PipelineLayoutDescriptor, Queue, RenderPass,
-	RenderPipelineDescriptor, VertexState,
+	BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+	BindGroupLayoutEntry, Buffer, BufferUsages, DepthBiasState, DepthStencilState, Device,
+	FragmentState, IndexFormat, MultisampleState, PipelineCache, PipelineCompilationOptions,
+	PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPass, RenderPipelineDescriptor,
+	ShaderStages, StencilState, TextureFormat, TextureSampleType, TextureViewDimension,
+	VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
 	util::{BufferInitDescriptor, DeviceExt},
 	wgt::BufferDescriptor,
 };
 use zerocopy::{FromBytes, IntoBytes, little_endian};
+
+use crate::workspace::stage_editor::shaders::ShaderOptions;
 
 pub struct Object {
 	bfres: Option<bfres::ModelArchive>,
@@ -39,6 +44,40 @@ struct RenderMesh {
 }
 
 impl Object {
+	pub fn bind_group(device: &Device) -> BindGroupLayout {
+		device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+			label: Some("stage object bind group layout"),
+			entries: &[
+				BindGroupLayoutEntry {
+					binding: 0,
+					visibility: ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				},
+				BindGroupLayoutEntry {
+					binding: 1,
+					visibility: ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Texture {
+						sample_type: TextureSampleType::Uint,
+						view_dimension: TextureViewDimension::D2,
+						multisampled: false,
+					},
+					count: None,
+				},
+				BindGroupLayoutEntry {
+					binding: 2,
+					visibility: ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+					count: None,
+				},
+			],
+		})
+	}
+
 	pub fn new(
 		object_path: &Path,
 		device: &Device,
@@ -189,6 +228,70 @@ impl Object {
 						},
 					});
 				}
+				let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+					label: Some("object pipeline layout"),
+					bind_group_layouts: &[Some(&bind_group_layout), Some(&bind_group_layout)],
+					immediate_size: 0,
+				});
+				let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+					label: Some("object pipeline"),
+					layout: Some(&pipeline_layout),
+					vertex: VertexState {
+						module: &wgsl,
+						entry_point: Some("vtx_main"),
+						compilation_options: PipelineCompilationOptions::default(),
+						buffers: &[
+							Some(VertexBufferLayout {
+								array_stride: 12,
+								step_mode: VertexStepMode::Vertex,
+								attributes: &[VertexAttribute {
+									format: VertexFormat::Float32x3,
+									offset: 0,
+									shader_location: 0,
+								}],
+							}),
+							Some(VertexBufferLayout {
+								array_stride: 12,
+								step_mode: VertexStepMode::Vertex,
+								attributes: &[VertexAttribute {
+									format: VertexFormat::Float32x3,
+									offset: 0,
+									shader_location: 3,
+								}],
+							}),
+						],
+					},
+					primitive: PrimitiveState {
+						topology: wgpu::PrimitiveTopology::TriangleList,
+						strip_index_format: None,
+						front_face: wgpu::FrontFace::Ccw,
+						cull_mode: Some(wgpu::Face::Back),
+						unclipped_depth: false,
+						polygon_mode: wgpu::PolygonMode::Fill,
+						conservative: false,
+					},
+					depth_stencil: Some(DepthStencilState {
+						format: TextureFormat::Depth32Float,
+						depth_write_enabled: Some(true),
+						depth_compare: Some(wgpu::CompareFunction::Less),
+						stencil: StencilState::default(),
+						bias: DepthBiasState::default(),
+					}),
+					multisample: MultisampleState::default(),
+					fragment: Some(FragmentState {
+						module: &wgsl,
+						entry_point: Some("frag_main"),
+						compilation_options: PipelineCompilationOptions::default(),
+						targets: &[Some(ColorTargetState {
+							format: surface_color_format,
+							blend: None,
+							write_mask: ColorWrites::COLOR,
+						})],
+					}),
+					multiview_mask: None,
+					cache: None,
+				});
+
 				shapes.push(RenderShape { attributes, meshes })
 			}
 		}

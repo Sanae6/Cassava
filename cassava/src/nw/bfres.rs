@@ -874,7 +874,6 @@ impl ModelArchive {
 					let _property = reader.read_u32()?;
 					let size = reader.read_u32()?;
 					let offset = reader.read_u64()?;
-					println!("{size:X} {offset:X} {:X}", reader.len());
 
 					let memory_pool = reader.scope(offset as usize, |reader| {
 						reader.read_slice(size as usize).map(<[_]>::to_vec)

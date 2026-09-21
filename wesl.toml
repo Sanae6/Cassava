@@ -1,0 +1,2 @@
+edition = "2026_pre"
+root = "editor/src/workspace/stage_editor/shaders/shader.wesl"

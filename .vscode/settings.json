@@ -1,1 +1,4 @@
-{}
+{
+  "wgsl-analyzer.showSyntaxTree": true,
+  "wgsl-analyzer.server.path": "wgsl-analyzer",
+}

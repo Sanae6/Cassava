@@ -1,2 +1,5 @@
+- parameterise shader based on alRenderMaterial parameters
+  - intentionally not looking at killz/gra decomp, need to guess what parameters mean
+- drag to select multiple objects
 - lod
 - clipping

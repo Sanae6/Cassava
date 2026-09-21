@@ -3,6 +3,7 @@ mod camera;
 mod hierarchy;
 mod view;
 mod object;
+mod shaders;
 
 use std::{collections::HashMap, sync::Arc};
 

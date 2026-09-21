@@ -71,7 +71,7 @@ impl ShaderArchive {
 		let archive_start = reader.read_u64()? as _;
 
 		reader.seek(archive_start)?;
-		// println!("{archive_start:?}");
+		println!("{archive_start:?}");
 
 		let file_name = reader.read_u64()? as usize;
 		let file_name = read_owned_string_at(&mut reader, file_name)?;
