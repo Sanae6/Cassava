@@ -37,7 +37,8 @@ fn main() {
 	// Application::new().run(|cx| {
 	// });
 	Application::with_wgpu_options(WgpuOptions {
-		additional_features: Features::PIPELINE_CACHE,
+		additional_features: Features::PIPELINE_CACHE
+			| Features::TEXTURE_COMPRESSION_BC,
 	})
 	.run(|cx| {
 		Theme::register(cx);

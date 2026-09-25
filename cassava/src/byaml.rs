@@ -1,9 +1,4 @@
-use std::{
-	backtrace::Backtrace,
-	collections::HashSet,
-	ptr,
-	sync::Arc,
-};
+use std::{backtrace::Backtrace, collections::HashSet, ptr, sync::Arc};
 
 use atomic_refcell::AtomicRefCell;
 use indexmap::IndexMap;
@@ -410,6 +405,12 @@ impl Byml {
 	}
 
 	// utilities
+	pub fn as_element(&self) -> Element {
+		match self.root_node.as_ref() {
+			Some(container) => container.as_element(),
+			None => Element::Null,
+		}
+	}
 
 	pub fn as_dictionary(&self) -> Option<Arc<AtomicRefCell<Dictionary>>> {
 		self.root_node.as_ref().and_then(Container::as_dictionary)

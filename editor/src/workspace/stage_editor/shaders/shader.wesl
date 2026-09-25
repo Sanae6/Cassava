@@ -31,6 +31,8 @@ fn vtx_main(
 
 @fragment
 fn frag_main(in: VertexOutput) -> @location(0) vec4f {
-    @if(textured) return textureSample(t_diffuse, s_diffuse, in.uv);
+    @if(textured && vertex_colours) return in.colour * textureSample(t_diffuse, s_diffuse, in.uv);
+    @elif(textured) return textureSample(t_diffuse, s_diffuse, in.uv);
+    @elif(vertex_colours) return in.colour;
     @else return vec4f(in.normal, 1);
 }

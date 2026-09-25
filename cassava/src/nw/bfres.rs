@@ -226,6 +226,9 @@ pub enum SamplerError {
 	InvalidWrapMode,
 	InvalidCompareOp,
 	InvalidBorderColor,
+	InvalidMipFilterMode,
+	InvalidExpandFilterMode,
+	InvalidShrinkFilterMode,
 }
 
 #[derive(Snafu, Debug)]
@@ -312,7 +315,7 @@ pub struct Bone {
 	pub billboard_index: Option<u16>,
 	pub scale: Vec3,
 	pub rotation: BoneRotation,
-	pub position: Vec3,
+	pub translation: Vec3,
 	// flags
 	pub visible: bool,
 
@@ -324,7 +327,7 @@ pub struct Bone {
 #[derive(Debug)]
 pub enum BoneRotation {
 	Quat(Quat),
-	Euler(Vec3),
+	EulerXYZ(Vec3),
 }
 /// see [bfreslibrary](https://github.com/KillzXGaming/BfresLibrary/blob/master/BfresLibrary/Shared/Models/Skeleton/Bone.cs#L597)
 /// there are some explanations that are useful to describe these
@@ -806,8 +809,10 @@ pub struct Sampler {
 	pub wrap_modes: [WrapMode; 3],
 	pub compare_op: CompareOp,
 	pub border_color: BorderColor,
+	pub mip_filter: MipFilterMode,
+	pub expand_filter: FilterMode,
+	pub shrink_filter: FilterMode,
 	pub anisotropic_level: u8,
-	pub filter_flags: u16,
 	pub min_lod: f32,
 	pub max_lod: f32,
 	pub lod_bias: f32,
@@ -839,6 +844,19 @@ pub enum BorderColor {
 	White,
 	TransparentBlack,
 	Black,
+}
+
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MipFilterMode {
+	None = 0,
+	Points = 1,
+	Linear = 2,
+}
+
+#[derive(FromPrimitive, ToPrimitive, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterMode {
+	Points = 1,
+	Linear = 2,
 }
 
 impl ModelArchive {
@@ -884,7 +902,7 @@ impl ModelArchive {
 			})
 			.transpose()?
 			.unwrap_or_default();
-		
+
 		let models = read_dict::<_, ModelError>(
 			&mut reader,
 			model_array,
@@ -1016,7 +1034,7 @@ impl ModelArchive {
 		let rotation = reader.read_vec4()?;
 		let position = reader.read_vec3()?;
 		let rotation = match flags.use_euler_rotation() {
-			true => BoneRotation::Euler(Vec3::from_slice(&rotation.to_array()[..3])),
+			true => BoneRotation::EulerXYZ(Vec3::from_slice(&rotation.to_array()[..3])),
 			false => BoneRotation::Quat(Quat::from_array(rotation.to_array())),
 		};
 
@@ -1029,7 +1047,7 @@ impl ModelArchive {
 			billboard_index,
 			scale,
 			rotation,
-			position,
+			translation: position,
 			visible: flags.visible(),
 			billboard_transformation: BillboardTransform::from_u8(flags.billboard_transform()).unwrap(),
 			transform: flags.transform(),
@@ -1391,12 +1409,21 @@ impl ModelArchive {
 		let lod_bias = reader.read_f32()?;
 		reader.seek_rel(12)?;
 
+		let mip_filter =
+			MipFilterMode::from_u16(filter_flags & 0b11).context(InvalidMipFilterModeSnafu)?;
+		let expand_filter =
+			FilterMode::from_u16(filter_flags >> 2 & 0b11).context(InvalidExpandFilterModeSnafu)?;
+		let shrink_filter =
+			FilterMode::from_u16(filter_flags >> 4 & 0b11).context(InvalidShrinkFilterModeSnafu)?;
+
 		Ok(Sampler {
 			wrap_modes,
 			compare_op,
 			border_color,
 			anisotropic_level,
-			filter_flags,
+			mip_filter,
+			expand_filter,
+			shrink_filter,
 			min_lod,
 			max_lod,
 			lod_bias,

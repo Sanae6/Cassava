@@ -1,16 +1,18 @@
-use std::{fs, path::Path, sync::Arc};
+use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
-use cassava_project::stage::Stage;
+use cassava::nw::{bfres::ModelArchive, bntx::TextureArchive};
+use cassava_project::{smol_str::SmolStr, stage::Stage};
 use glam::Mat4;
 use wgpu::{
-	BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-	BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages, Color, ColorTargetState,
-	ColorWrites, DepthBiasState, DepthStencilState, Extent3d, FragmentState, MultisampleState,
-	Operations, PipelineCache, PipelineCacheDescriptor, PipelineCompilationOptions,
-	PipelineLayoutDescriptor, PrimitiveState, RenderPassColorAttachment,
-	RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-	ShaderStages, StencilState, Texture, TextureDimension, TextureFormat, TextureUsages, TextureView,
-	VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode, include_wgsl,
+	BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+	BindGroupLayoutEntry, BindingType, BlendComponent, BlendState, Buffer, BufferBindingType,
+	BufferDescriptor, BufferUsages, Color, ColorTargetState, ColorWrites, DepthBiasState,
+	DepthStencilState, Device, Extent3d, FragmentState, MultisampleState, Operations, PipelineCache,
+	PipelineCacheDescriptor, PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState,
+	Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
+	RenderPipeline, RenderPipelineDescriptor, ShaderStages, StencilState, Texture, TextureDimension,
+	TextureFormat, TextureUsages, TextureView, VertexAttribute, VertexBufferLayout, VertexFormat,
+	VertexState, VertexStepMode, include_wgsl,
 	wgt::{CommandEncoderDescriptor, TextureDescriptor, TextureViewDescriptor},
 };
 use zerocopy::IntoBytes;
@@ -25,11 +27,10 @@ use crate::workspace::stage_editor::{
 pub struct StageView {
 	device: Arc<wgpu::Device>,
 	queue: Arc<wgpu::Queue>,
-	pipeline: RenderPipeline,
 	camera: ViewCamera,
 	proj_matrix: Mat4,
-	uniform_buffer: Buffer,
-	bind_group: BindGroup,
+	proj_uniform: Buffer,
+	proj_bind_group: BindGroup,
 	depth_texture: Texture,
 	objects: Vec<Object>,
 
@@ -48,21 +49,13 @@ impl StageView {
 		stage: &Stage,
 		romfs_path: &Path,
 	) -> Self {
-		let wgsl = device.create_shader_module(
-			ShaderOptions {
-				textured: false,
-				vertex_colours: false,
-			}
-			.into(),
-		);
-
 		let uniform_buffer = device.create_buffer(&BufferDescriptor {
 			label: Some("stage view uniform buffer"),
 			usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
 			size: size_of::<Mat4>() as _,
 			mapped_at_creation: false,
 		});
-		let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+		let proj_bind_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
 			label: Some("stage view bind group layout"),
 			entries: &[BindGroupLayoutEntry {
 				binding: 0,
@@ -77,7 +70,7 @@ impl StageView {
 		});
 		let bind_group = device.create_bind_group(&BindGroupDescriptor {
 			label: Some("stage view bind group"),
-			layout: &bind_group_layout,
+			layout: &proj_bind_layout,
 			entries: &[BindGroupEntry {
 				binding: 0,
 				resource: uniform_buffer.as_entire_binding(),
@@ -116,7 +109,7 @@ impl StageView {
 			view_formats: &[TextureFormat::Depth32Float],
 		});
 
-		if let (Some(pipeline_cache), Some(cache_file)) = (pipeline_cache, cache_file) {
+		if let (Some(pipeline_cache), Some(cache_file)) = (&pipeline_cache, cache_file) {
 			let data = pipeline_cache.get_data();
 			if let Some(data) = data {
 				let temp_file = cache_file.with_extension("temp");
@@ -125,18 +118,77 @@ impl StageView {
 			}
 		}
 
-		let bind_group_layout = Object::bind_group(&device);
 		let mut objects = Vec::new();
 		let object_data = romfs_path.join("ObjectData");
+		let context = PipelineContext {
+			depth_stencil_state: DepthStencilState {
+				format: TextureFormat::Depth32Float,
+				depth_write_enabled: Some(true),
+				depth_compare: Some(wgpu::CompareFunction::Less),
+				stencil: StencilState::default(),
+				bias: DepthBiasState::default(),
+			},
+			colour_target_state: ColorTargetState {
+				format: surface_color_format,
+				blend: Some(BlendState {
+					color: BlendComponent {
+						src_factor: wgpu::BlendFactor::SrcAlpha,
+						dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+						operation: wgpu::BlendOperation::Add,
+					},
+					alpha: BlendComponent {
+						src_factor: wgpu::BlendFactor::SrcAlpha,
+						dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+						operation: wgpu::BlendOperation::Add,
+					},
+				}),
+				write_mask: ColorWrites::COLOR,
+			},
+			device: &device,
+			queue: &queue,
+			proj_bind_layout: &proj_bind_layout,
+			pipeline_cache: pipeline_cache.as_ref(),
+		};
+		let mut model_cache: HashMap<SmolStr, (ModelArchive, Option<TextureArchive>, Option<SmolStr>)> =
+			HashMap::new();
+		let mut texture_arc_cache = HashMap::new();
 		for (_, entity) in &stage.entities {
 			// let object_name = entity.object_name;
 			let object_path = object_data.join(format!("{}.szs", entity.object_name));
+
+			let (model, texture_archive, external_texture_archive) =
+				if let Some(all) = model_cache.get(&entity.object_name) {
+					all
+				} else if let Some((model, texture_archive, external_texture_archive)) =
+					Object::load_model_archive(&object_data, &entity.object_name)
+				{
+					model_cache.insert(
+						entity.object_name.clone(),
+						(model, texture_archive, external_texture_archive),
+					);
+					model_cache.get(&entity.object_name).unwrap()
+				} else {
+					continue;
+				};
+
+			let external_texture_archive = external_texture_archive.as_ref().and_then(|name| {
+				if let Some(texture_arc) = texture_arc_cache.get(name) {
+					Some(texture_arc)
+				} else if let Some(texture_arc) = Object::load_external_texture_archive(&object_data, &name)
+				{
+					texture_arc_cache.insert(entity.object_name.clone(), texture_arc);
+					texture_arc_cache.get(&entity.object_name)
+				} else {
+					None
+				}
+			});
+
 			let object = Object::new(
-				&object_path,
-				&device,
-				&queue,
-				&bind_group_layout,
+				model,
+				&context,
 				entity.transform,
+				texture_archive.as_ref(),
+				external_texture_archive,
 			);
 			objects.push(object);
 		}
@@ -144,7 +196,6 @@ impl StageView {
 		Self {
 			device,
 			queue,
-			pipeline,
 			camera: ViewCamera::new(),
 			proj_matrix: glam::camera::rh::proj::directx::perspective(
 				45.0,
@@ -152,9 +203,9 @@ impl StageView {
 				0.1,
 				10000.0,
 			),
-			uniform_buffer,
+			proj_uniform: uniform_buffer,
 			objects,
-			bind_group,
+			proj_bind_group: bind_group,
 			depth_texture,
 			surface_width,
 			surface_height,
@@ -192,13 +243,16 @@ impl StageView {
 	}
 
 	pub fn update(&mut self, actions: &Actions) {
-		// if !actions.held(StageAction::Lock) {
-		// 	return;
-		// }
 		self.camera.update(actions);
 	}
 
 	pub fn render(&mut self, view: TextureView) {
+		self.queue.write_buffer(
+			&self.proj_uniform,
+			0,
+			(self.proj_matrix * self.camera.calculate_matrix()).as_bytes(),
+		);
+
 		let mut cmd = self
 			.device
 			.create_command_encoder(&CommandEncoderDescriptor { label: Some("lol") });
@@ -229,20 +283,22 @@ impl StageView {
 				occlusion_query_set: None,
 				multiview_mask: None,
 			});
-			pass.set_bind_group(0, &self.bind_group, &[]);
-			pass.set_pipeline(&self.pipeline);
+			pass.set_bind_group(0, &self.proj_bind_group, &[]);
 
 			for object in &self.objects {
 				object.draw(&mut pass);
 			}
 		}
 
-		self.queue.write_buffer(
-			&self.uniform_buffer,
-			0,
-			(self.proj_matrix * self.camera.calculate_matrix()).as_bytes(),
-		);
-
 		self.queue.submit([cmd.finish()]);
 	}
+}
+
+pub struct PipelineContext<'a> {
+	pub depth_stencil_state: DepthStencilState,
+	pub colour_target_state: ColorTargetState,
+	pub device: &'a Device,
+	pub queue: &'a Queue,
+	pub proj_bind_layout: &'a BindGroupLayout,
+	pub pipeline_cache: Option<&'a PipelineCache>,
 }

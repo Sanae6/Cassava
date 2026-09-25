@@ -6,7 +6,10 @@ use indexmap::IndexMap;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
-use tegra_swizzle::{SwizzleError, surface::BlockDim};
+use tegra_swizzle::{
+	BlockHeight, SwizzleError, block_height_mip0, div_round_up, surface::BlockDim,
+	swizzle::deswizzled_mip_size,
+};
 
 use crate::{
 	nw::{
@@ -317,7 +320,6 @@ pub struct TextureInfo {
 	pub channel_sources: [u8; 4],
 	pub image_dimension: u8,
 	pub texture_name: String,
-	// pub mipmaps: Vec<Vec<Vec<u8>>>,
 	pub image_data: Vec<u8>,
 	pub mip_offsets: Vec<usize>,
 	pub user_data: IndexMap<String, UserData>,
@@ -414,28 +416,51 @@ impl TextureArchive {
 				let _texture_name = reader.read_u64()? as usize;
 				reader.seek_rel(8)?;
 				let mipmaps = reader.read_u64()? as usize;
+				let format_info = FormatInfo::from_image_format(channel_format, type_format);
 				let image_data = reader.scope::<_, TextureError>(mipmaps, |reader| {
 					let start = reader.read_u64()? as usize;
 					reader.seek(start)?;
 					let swizzled_data = reader.read_slice(total_texture_size)?;
-					let format_info = FormatInfo::from_image_format(channel_format, type_format);
 					Ok(tegra_swizzle::surface::deswizzle_surface(
 						width,
 						height,
 						depth,
 						swizzled_data,
 						format_info.block_dim,
-						None,
+						Some(block_height_mip0(div_round_up(
+							height,
+							format_info.block_dim.height.get(),
+						))),
 						format_info.bytes_per_pixel,
 						mip_levels as _,
 						array_layers as _,
 					)?)
 				})?;
-				let mip_offsets = reader
-					.read_boxed_array(mip_levels as usize * array_layers as usize, |reader, _| {
-						reader.read_u64().map(|value| value as usize)
-					})?
-					.into();
+				// let mip_offsets = reader
+				// 	.read_boxed_array(mip_levels as usize * array_layers as usize, |reader, _| {
+				// 		reader.read_u64().map(|value| value as usize)
+				// 	})?
+				// 	.into();
+				let mut mip_offset = 0;
+				let mip_offsets = (0..mip_levels as u32)
+					.map(|mip_level| {
+						let offset = mip_offset;
+						let size = deswizzled_mip_size(
+							div_round_up(
+								(width >> mip_level).max(1),
+								format_info.block_dim.width.get(),
+							),
+							div_round_up(
+								(height >> mip_level).max(1),
+								format_info.block_dim.height.get(),
+							),
+							depth,
+							format_info.bytes_per_pixel,
+						);
+						mip_offset += size;
+						offset
+					})
+					.collect();
 				let gfx_user_data_values = reader.read_u64()? as usize;
 				reader.seek_rel(24)?;
 				let gfx_user_data_dict = reader.read_u64()? as usize;

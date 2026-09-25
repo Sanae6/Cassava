@@ -1,9 +1,9 @@
 // mod camera;
 mod camera;
 mod hierarchy;
-mod view;
 mod object;
 mod shaders;
+mod view;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -18,7 +18,10 @@ use gpui::{
 use wgpu::TextureFormat;
 
 use crate::{
-	components::{StyleExt, theme::ThemeExt}, config::ConfigAccessor, project::ProjectAccessor, workspace::stage_editor::{hierarchy::StageHierarchy, view::StageView}
+	components::{StyleExt, theme::ThemeExt},
+	config::ConfigAccessor,
+	project::ProjectAccessor,
+	workspace::stage_editor::{hierarchy::StageHierarchy, view::StageView},
 };
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
@@ -29,6 +32,10 @@ enum StageAction {
 	MoveRight,
 	MoveUp,
 	MoveDown,
+	LookLeft,
+	LookRight,
+	LookUp,
+	LookDown,
 	Select,
 	Lock,
 	Faster,
@@ -56,6 +63,10 @@ impl Actions {
 			"d" => Some(StageAction::MoveRight),
 			"q" => Some(StageAction::MoveDown),
 			"e" => Some(StageAction::MoveUp),
+			"i" => Some(StageAction::LookUp),
+			"j" => Some(StageAction::LookDown),
+			"k" => Some(StageAction::LookLeft),
+			"l" => Some(StageAction::LookRight),
 			_ => None,
 		}
 	}
