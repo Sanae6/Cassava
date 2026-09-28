@@ -17,7 +17,7 @@ use crate::{
 		read_binary_file_header, read_owned_string_at, read_string_at,
 		res_dict::{Dict, DictError},
 	},
-	util::{self, BinaryReader, ByteOrder},
+	util::{self, BinaryReader, ByteOrder, align_up, try_align_up},
 };
 
 #[derive(Snafu, Debug)]
@@ -881,23 +881,23 @@ impl ModelArchive {
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
 		let (scene_anim_array, scene_anim_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
-		reader.seek_rel(8)?;
-		let memory_pool_offset = reader.read_u64()? as usize;
+		let _memory_pool = reader.read_u64()? as usize;
+		let buffer_info_offset = reader.read_u64()? as usize;
 		let (embedded_file_array, embedded_file_dictionary) =
 			(reader.read_u64()? as usize, reader.read_u64()? as usize);
 
-		let memory_pool = (memory_pool_offset != 0)
+		let buffer = (buffer_info_offset != 0)
 			.then(|| {
-				reader.scope(memory_pool_offset, |reader| -> Result<_, Error> {
-					let _property = reader.read_u32()?;
+				reader.scope(buffer_info_offset, |reader| -> Result<_, Error> {
+					let _ = reader.read_u32()?;
 					let size = reader.read_u32()?;
 					let offset = reader.read_u64()?;
 
-					let memory_pool = reader.scope(offset as usize, |reader| {
+					let buffer = reader.scope(offset as usize, |reader| {
 						reader.read_slice(size as usize).map(<[_]>::to_vec)
 					})?;
 
-					Ok(memory_pool)
+					Ok(buffer)
 				})
 			})
 			.transpose()?
@@ -907,7 +907,7 @@ impl ModelArchive {
 			&mut reader,
 			model_array,
 			model_dictionary,
-			|reader, dict_name, _| Self::read_model(reader, dict_name, &memory_pool),
+			|reader, dict_name, _| Self::read_model(reader, dict_name, &buffer),
 		)?;
 		let embedded_files = read_dict::<_, util::Error>(
 			&mut reader,
@@ -1113,6 +1113,8 @@ impl ModelArchive {
 				reader.read_u32()
 			})?;
 
+			buffer_offset =
+				try_align_up(buffer_offset, 8).context(VertexBufferOutsideOfMemoryPoolSnafu)?;
 			let data = buffer_offset
 				.checked_add(size as usize)
 				.and_then(|end| memory_pool.get(buffer_offset..end))

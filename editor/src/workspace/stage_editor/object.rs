@@ -325,15 +325,23 @@ impl Object {
 					let key = AttributeKey::from(attrib_name.as_str());
 					let (buffer, stride, format) = match key {
 						AttributeKey::Position => {
-							let vertices = match attrib.format {
-								VertexAttribFormat::Vec3F32 => vertex_starts
-									.map(|start| buffer.data[start..start + 12].into_iter().cloned())
-									.flatten()
-									.collect_vec(),
-								VertexAttribFormat::Vec4F16 => vertex_starts
-									.map(|start| buffer.data[start..start + 6].into_iter().cloned())
-									.flatten()
-									.collect_vec(),
+							let (vertices, stride, format) = match attrib.format {
+								VertexAttribFormat::Vec3F32 => (
+									vertex_starts
+										.map(|start| buffer.data[start..start + 12].into_iter().cloned())
+										.flatten()
+										.collect_vec(),
+									12,
+									VertexFormat::Float32x3,
+								),
+								VertexAttribFormat::Vec4F16 => (
+									vertex_starts
+										.map(|start| buffer.data[start..start + 8].into_iter().cloned())
+										.flatten()
+										.collect_vec(),
+									8,
+									VertexFormat::Float16x4,
+								),
 								format => panic!("unknown format for positions {format:?}"),
 							};
 							(
@@ -342,8 +350,8 @@ impl Object {
 									contents: vertices.as_bytes(),
 									usage: BufferUsages::VERTEX,
 								}),
-								12,
-								VertexFormat::Float32x3,
+								stride,
+								format,
 							)
 						}
 						AttributeKey::Normal => {
@@ -412,14 +420,8 @@ impl Object {
 							)
 						}
 						AttributeKey::Uv0 => {
-							println!(
-								"uv format: {:?} {} {}",
-								attrib.format, buffer.stride as usize, attrib.buffer_offset as usize
-							);
 							let (vertices, stride, format) = match attrib.format {
-								VertexAttribFormat::Vec2Unorm16
-								| VertexAttribFormat::Vec2Snorm16
-								| VertexAttribFormat::Vec2F16 => (
+								VertexAttribFormat::Vec2Unorm16 | VertexAttribFormat::Vec2Snorm16 => (
 									vertex_starts
 										.map(|start| buffer.data[start + 0..start + 4].into_iter().cloned())
 										.flatten()
@@ -428,9 +430,28 @@ impl Object {
 									match attrib.format {
 										VertexAttribFormat::Vec2Unorm16 => VertexFormat::Unorm16x2,
 										VertexAttribFormat::Vec2Snorm16 => VertexFormat::Snorm16x2,
-										VertexAttribFormat::Vec2F16 => VertexFormat::Float16x2,
 										_ => unreachable!(),
 									},
+								),
+								VertexAttribFormat::Vec2F16 => (
+									vertex_starts
+										.map(|start| {
+											let data =
+												<[[u8; 2]; 2]>::read_from_bytes(&buffer.data[start + 0..start + 4])
+													.unwrap();
+											data
+										})
+										.map(|array| {
+											array
+												.map(f16::from_le_bytes)
+												.map(f16::to_f32)
+												.map(f32::to_le_bytes)
+										})
+										.flatten()
+										.flatten()
+										.collect_vec(),
+									8,
+									VertexFormat::Float32x2,
 								),
 								VertexAttribFormat::Vec2Unorm8 => (
 									vertex_starts
@@ -442,9 +463,7 @@ impl Object {
 								),
 								VertexAttribFormat::Vec2F32 => (
 									vertex_starts
-										.map(|start| {
-											<[u8; 8]>::read_from_bytes(&buffer.data[start..start + 8]).unwrap()
-										})
+										.map(|start| buffer.data[start..start + 8].into_iter().cloned())
 										.flatten()
 										.collect_vec(),
 									8,
@@ -520,6 +539,7 @@ impl Object {
 						(ChannelFormat::BC1, TypeFormat::SRGB) => TextureFormat::Bc1RgbaUnormSrgb,
 						(ChannelFormat::BC3, TypeFormat::SRGB) => TextureFormat::Bc3RgbaUnormSrgb,
 						(ChannelFormat::BC4, TypeFormat::Unorm) => TextureFormat::Bc4RUnorm,
+						(ChannelFormat::R8G8B8A8, TypeFormat::SRGB) => TextureFormat::Rgba8UnormSrgb,
 						(chan, ty) => unimplemented!("{chan:?} {ty:?}"),
 					};
 					let convert_wrap_mode = |wrap_mode: WrapMode| match wrap_mode {

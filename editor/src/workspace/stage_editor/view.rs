@@ -124,7 +124,7 @@ impl StageView {
 			depth_stencil_state: DepthStencilState {
 				format: TextureFormat::Depth32Float,
 				depth_write_enabled: Some(true),
-				depth_compare: Some(wgpu::CompareFunction::Less),
+				depth_compare: Some(wgpu::CompareFunction::LessEqual),
 				stencil: StencilState::default(),
 				bias: DepthBiasState::default(),
 			},
