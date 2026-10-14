@@ -7,7 +7,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 use tegra_swizzle::{
-	BlockHeight, SwizzleError, block_height_mip0, div_round_up, surface::BlockDim,
+	SwizzleError, block_height_mip0, div_round_up, surface::BlockDim,
 	swizzle::deswizzled_mip_size,
 };
 
@@ -139,7 +139,7 @@ pub enum ChannelFormat {
 }
 
 impl ChannelFormat {
-	fn stride(&self) -> u32 {
+	pub const fn stride(&self) -> usize {
 		match self {
 			ChannelFormat::None => 0,
 			ChannelFormat::R8 => 1,
@@ -185,6 +185,66 @@ impl ChannelFormat {
 			ChannelFormat::B5G5R5A1 => 2,
 		}
 	}
+
+	pub const fn is_bcn(&self) -> bool {
+		matches!(
+			self,
+			ChannelFormat::BC1
+				| ChannelFormat::BC4
+				| ChannelFormat::BC2
+				| ChannelFormat::BC3
+				| ChannelFormat::BC5
+				| ChannelFormat::BC6H
+				| ChannelFormat::BC7U
+		)
+	}
+
+	pub const fn is_astc(&self) -> bool {
+		matches!(
+			self,
+			ChannelFormat::Astc4x4
+				| ChannelFormat::Astc5x4
+				| ChannelFormat::Astc5x5
+				| ChannelFormat::Astc6x5
+				| ChannelFormat::Astc6x6
+				| ChannelFormat::Astc8x5
+				| ChannelFormat::Astc8x6
+				| ChannelFormat::Astc8x8
+				| ChannelFormat::Astc10x5
+				| ChannelFormat::Astc10x6
+				| ChannelFormat::Astc10x8
+				| ChannelFormat::Astc10x10
+				| ChannelFormat::Astc12x10
+				| ChannelFormat::Astc12x12
+		)
+	}
+
+	pub const fn format_info(&self) -> FormatInfo {
+		match self {
+			ChannelFormat::BC1 => FormatInfo::block(8, 4, 4, 1),
+			ChannelFormat::BC2 => FormatInfo::block(16, 4, 4, 1),
+			ChannelFormat::BC3 => FormatInfo::block(16, 4, 4, 1),
+			ChannelFormat::BC4 => FormatInfo::block(8, 4, 4, 1),
+			ChannelFormat::BC5 => FormatInfo::block(16, 4, 4, 1),
+			ChannelFormat::BC6H => FormatInfo::block(16, 4, 4, 1),
+			ChannelFormat::BC7U => FormatInfo::block(16, 4, 4, 1),
+			ChannelFormat::Astc4x4 => FormatInfo::block(16, 4, 4, 1),
+			ChannelFormat::Astc5x4 => FormatInfo::block(16, 5, 4, 1),
+			ChannelFormat::Astc5x5 => FormatInfo::block(16, 5, 5, 1),
+			ChannelFormat::Astc6x5 => FormatInfo::block(16, 6, 5, 1),
+			ChannelFormat::Astc6x6 => FormatInfo::block(16, 6, 6, 1),
+			ChannelFormat::Astc8x5 => FormatInfo::block(16, 8, 5, 1),
+			ChannelFormat::Astc8x6 => FormatInfo::block(16, 8, 6, 1),
+			ChannelFormat::Astc8x8 => FormatInfo::block(16, 8, 8, 1),
+			ChannelFormat::Astc10x5 => FormatInfo::block(16, 10, 5, 1),
+			ChannelFormat::Astc10x6 => FormatInfo::block(16, 10, 6, 1),
+			ChannelFormat::Astc10x8 => FormatInfo::block(16, 10, 8, 1),
+			ChannelFormat::Astc10x10 => FormatInfo::block(16, 10, 10, 1),
+			ChannelFormat::Astc12x10 => FormatInfo::block(16, 12, 10, 1),
+			ChannelFormat::Astc12x12 => FormatInfo::block(16, 12, 12, 1),
+			channel_format => FormatInfo::block(channel_format.stride() as _, 1, 1, 1),
+		}
+	}
 }
 
 #[derive(FromPrimitive, ToPrimitive, Clone, Copy, Debug)]
@@ -201,53 +261,51 @@ pub enum TypeFormat {
 	UF32 = 10,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FormatInfo {
-	pub bytes_per_pixel: u32,
-	pub block_dim: BlockDim,
+	bytes_per_pixel: u8,
+	block_width: u8,
+	block_height: u8,
+	block_depth: u8,
 }
 
 impl FormatInfo {
+	pub fn bytes_per_pixel(&self) -> usize { self.bytes_per_pixel as usize }
+	pub fn block_width(&self) -> usize { self.block_width as usize }
+	pub fn block_height(&self) -> usize { self.block_height as usize }
+	pub fn block_depth(&self) -> usize { self.block_depth as usize }
 	const fn block(
-		bytes_per_pixel: u32,
-		block_width: u32,
-		block_height: u32,
-		block_depth: u32,
+		bytes_per_pixel: u8,
+		block_width: u8,
+		block_height: u8,
+		block_depth: u8,
 	) -> FormatInfo {
 		Self {
 			bytes_per_pixel,
-			block_dim: BlockDim {
-				width: NonZeroU32::new(block_width).unwrap(),
-				height: NonZeroU32::new(block_height).unwrap(),
-				depth: NonZeroU32::new(block_depth).unwrap(),
-			},
+			block_width,
+			block_height,
+			block_depth,
 		}
 	}
 
-	pub fn from_image_format(channel_format: ChannelFormat, type_format: TypeFormat) -> FormatInfo {
-		match (channel_format, type_format) {
-			(ChannelFormat::BC1, _) => Self::block(8, 4, 4, 1),
-			(ChannelFormat::BC2, _) => Self::block(16, 4, 4, 1),
-			(ChannelFormat::BC3, _) => Self::block(16, 4, 4, 1),
-			(ChannelFormat::BC4, _) => Self::block(8, 4, 4, 1),
-			(ChannelFormat::BC5, _) => Self::block(16, 4, 4, 1),
-			(ChannelFormat::BC6H, _) => Self::block(16, 4, 4, 1),
-			(ChannelFormat::BC7U, _) => Self::block(16, 4, 4, 1),
-			(ChannelFormat::Astc4x4, _) => Self::block(16, 4, 4, 1),
-			(ChannelFormat::Astc5x4, _) => Self::block(16, 5, 4, 1),
-			(ChannelFormat::Astc5x5, _) => Self::block(16, 5, 5, 1),
-			(ChannelFormat::Astc6x5, _) => Self::block(16, 6, 5, 1),
-			(ChannelFormat::Astc6x6, _) => Self::block(16, 6, 6, 1),
-			(ChannelFormat::Astc8x5, _) => Self::block(16, 8, 5, 1),
-			(ChannelFormat::Astc8x6, _) => Self::block(16, 8, 6, 1),
-			(ChannelFormat::Astc8x8, _) => Self::block(16, 8, 8, 1),
-			(ChannelFormat::Astc10x5, _) => Self::block(16, 10, 5, 1),
-			(ChannelFormat::Astc10x6, _) => Self::block(16, 10, 6, 1),
-			(ChannelFormat::Astc10x8, _) => Self::block(16, 10, 8, 1),
-			(ChannelFormat::Astc10x10, _) => Self::block(16, 10, 10, 1),
-			(ChannelFormat::Astc12x10, _) => Self::block(16, 12, 10, 1),
-			(ChannelFormat::Astc12x12, _) => Self::block(16, 12, 12, 1),
-			(channel_format, _) => Self::block(channel_format.stride(), 1, 1, 1),
+	pub fn block_size(&self) -> [u8; 3] {
+		[
+			self.block_width,
+			self.block_height,
+			self.block_depth
+		]
+	}
+
+	pub fn swizzle_block_dim(&self) -> BlockDim {
+		BlockDim {
+			width: NonZeroU32::new(self.block_width as _).unwrap(),
+			height: NonZeroU32::new(self.block_height as _).unwrap(),
+			depth: NonZeroU32::new(self.block_depth as _).unwrap(),
 		}
+	}
+
+	pub fn from_image_format(channel_format: ChannelFormat) -> FormatInfo {
+		channel_format.format_info()
 	}
 }
 
@@ -416,7 +474,7 @@ impl TextureArchive {
 				let _texture_name = reader.read_u64()? as usize;
 				reader.seek_rel(8)?;
 				let mipmaps = reader.read_u64()? as usize;
-				let format_info = FormatInfo::from_image_format(channel_format, type_format);
+				let format_info = channel_format.format_info();
 				let image_data = reader.scope::<_, TextureError>(mipmaps, |reader| {
 					let start = reader.read_u64()? as usize;
 					reader.seek(start)?;
@@ -426,12 +484,12 @@ impl TextureArchive {
 						height,
 						depth,
 						swizzled_data,
-						format_info.block_dim,
+						format_info.swizzle_block_dim(),
 						Some(block_height_mip0(div_round_up(
 							height,
-							format_info.block_dim.height.get(),
+							format_info.block_height() as _,
 						))),
-						format_info.bytes_per_pixel,
+						format_info.bytes_per_pixel as _,
 						mip_levels as _,
 						array_layers as _,
 					)?)
@@ -448,14 +506,14 @@ impl TextureArchive {
 						let size = deswizzled_mip_size(
 							div_round_up(
 								(width >> mip_level).max(1),
-								format_info.block_dim.width.get(),
+								format_info.block_width as _,
 							),
 							div_round_up(
 								(height >> mip_level).max(1),
-								format_info.block_dim.height.get(),
+								format_info.block_height as _,
 							),
 							depth,
-							format_info.bytes_per_pixel,
+							format_info.bytes_per_pixel as _,
 						);
 						mip_offset += size;
 						offset

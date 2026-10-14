@@ -31,3 +31,6 @@ phf = "0.14.0"
 phf_shared = "0.14.0"
 zerocopy = { workspace = true }
 itertools = "0.15.0"
+
+[dev-dependencies]
+szs = "*"

@@ -4,8 +4,10 @@ use cassava::{
 		bfres::{self, ModelArchive, VertexAttribFormat},
 		bntx::{ChannelFormat, TextureArchive, TextureInfo, TypeFormat},
 	},
+	sarc,
 	texture::{bc1, bc3, bc4, bc5},
 	util::{BinaryReader, ByteOrder},
+	yaz0,
 };
 use glam::Vec3;
 use gltf::Semantic;
@@ -19,7 +21,7 @@ use image::{RgbImage, RgbaImage};
 use serde_json::Number;
 use std::{
 	collections::{BTreeMap, HashMap},
-	fs,
+	fs::{self, read_dir},
 	path::{Path, PathBuf},
 };
 
@@ -34,7 +36,9 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Commands {
+	AutoSlop { in_path: PathBuf },
 	Dump { in_path: PathBuf },
+	Textures { in_path: PathBuf, out_dir: PathBuf },
 	Gltf { in_path: PathBuf, out_dir: PathBuf },
 }
 
@@ -42,10 +46,52 @@ enum Commands {
 fn main() -> Result<(), bfres::Error> {
 	let args = Args::parse();
 	match args.command {
+		Commands::AutoSlop { in_path } => {
+			fs::create_dir_all("target/burgers").unwrap();
+			for g in read_dir(in_path).unwrap() {
+				let file = g.unwrap();
+				let (data, alignment) = yaz0::decompress(&fs::read(file.path()).unwrap()).unwrap();
+				let data = sarc::Reader::new(data).unwrap();
+				let mut writer = sarc::Writer::new(0x1000);
+				for (name, data) in data.files() {
+					if !name.ends_with(".bfres") {
+						writer.add_file(name, data.to_vec());
+						continue;
+					}
+					let model = ModelArchive::read(&mut BinaryReader::new(&data)).unwrap();
+					let mut data = data.to_vec();
+					for (_, model) in model.models {
+						for (_, shape) in model.shapes {
+							data[shape.temp_offset_for_skin_weight_count] = 0;
+						}
+					}
+					writer.add_file(name, data);
+				}
+				let data = writer.save_to_vec(ByteOrder::Little).unwrap();
+				let data = szs::encode(&data, szs::EncodeAlgo::LibYaz0_RustLibc).unwrap();
+				fs::write(
+					format!(
+						"target/burgers/{}",
+						file.path().file_name().unwrap().to_str().unwrap()
+					),
+					data,
+				)
+				.unwrap();
+				// fs::write("")
+			}
+		}
 		Commands::Dump { in_path } => {
 			let file = fs::read(in_path).unwrap();
 			let model_archive = ModelArchive::read(&mut BinaryReader::new(&file))?;
 			println!("{model_archive:?}")
+		}
+		Commands::Textures { in_path, out_dir } => {
+			let file = fs::read(in_path).unwrap();
+			let model_archive = ModelArchive::read(&mut BinaryReader::new(&file))?;
+			fs::create_dir_all(&out_dir).unwrap();
+			for (file_name, data) in model_archive.embedded_files {
+				fs::write(out_dir.join(file_name), data).unwrap();
+			}
 		}
 		Commands::Gltf { in_path, out_dir } => {
 			let file = fs::read(in_path).unwrap();

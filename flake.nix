@@ -32,6 +32,12 @@
               fenix.complete.rust-src
             ])
 
+            webkitgtk_4_1
+            gtk3
+            cairo
+            libsoup_3
+            gdk-pixbuf
+            glib
             renderdoc
             clang
             pkg-config

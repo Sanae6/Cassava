@@ -1,4 +1,5 @@
 #![feature(error_generic_member_access)] // for snafu backtrace
+#![feature(uint_gather_scatter_bits)]
 
 pub mod byaml;
 pub mod kcl;

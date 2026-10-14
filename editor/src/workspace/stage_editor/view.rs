@@ -153,7 +153,6 @@ impl StageView {
 			HashMap::new();
 		let mut texture_arc_cache = HashMap::new();
 		for (_, entity) in &stage.entities {
-			// let object_name = entity.object_name;
 			let object_path = object_data.join(format!("{}.szs", entity.object_name));
 
 			let (model, texture_archive, external_texture_archive) =
@@ -197,12 +196,7 @@ impl StageView {
 			device,
 			queue,
 			camera: ViewCamera::new(),
-			proj_matrix: glam::camera::rh::proj::directx::perspective(
-				45.0,
-				surface_width as f32 / surface_height as f32,
-				0.1,
-				10000.0,
-			),
+			proj_matrix: Self::projection_matrix(surface_width as f32 / surface_height as f32),
 			proj_uniform: uniform_buffer,
 			objects,
 			proj_bind_group: bind_group,
@@ -213,6 +207,10 @@ impl StageView {
 		}
 	}
 
+	fn projection_matrix(aspect_ratio: f32) -> Mat4 {
+		glam::camera::rh::proj::directx::perspective(45.0, aspect_ratio, 10.0, 100000.0)
+	}
+
 	pub fn try_resize(&mut self, new_width: u32, new_height: u32) {
 		if self.surface_width == new_width && self.surface_height == new_height {
 			return;
@@ -220,12 +218,7 @@ impl StageView {
 
 		self.surface_width = new_width;
 		self.surface_height = new_height;
-		self.proj_matrix = glam::camera::rh::proj::directx::perspective(
-			45.0,
-			new_width as f32 / new_height as f32,
-			0.1,
-			50000.0,
-		);
+		self.proj_matrix = Self::projection_matrix(new_width as f32 / new_height as f32);
 		self.depth_texture = self.device.create_texture(&TextureDescriptor {
 			label: Some("stage view depth texture"),
 			size: Extent3d {

@@ -604,6 +604,7 @@ pub struct Shape {
 	pub flags: ShapeFlags,
 	pub material: Material,
 	pub base_bone_index: u16,
+	pub temp_offset_for_skin_weight_count: usize,
 	// todo bounding box
 	// todo bounding sphere
 }
@@ -1167,6 +1168,7 @@ impl ModelArchive {
 		let base_bone_index = reader.read_u16()?;
 		let _vertex_index = reader.read_u16()? as usize;
 		let skin_bone_index_count = reader.read_u16()? as usize;
+		let temp_offset_for_skin_weight_count = reader.position();
 		let vertex_skin_weight_count = reader.read_u8()? as usize;
 		let mesh_count = reader.read_u8()? as usize;
 		let key_shape_count = reader.read_u8()? as usize;
@@ -1199,6 +1201,7 @@ impl ModelArchive {
 			flags,
 			material,
 			base_bone_index,
+			temp_offset_for_skin_weight_count,
 		})
 	}
 

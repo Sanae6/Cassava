@@ -40,6 +40,8 @@ pub struct Object {
 	// todo: store skeletal information to play first frames of Wait animations
 	shapes: Vec<RenderShape>,
 	transform: Transform,
+	bounding_min: Vec3,
+	bounding_max: Vec3,
 }
 
 struct RenderShape {
@@ -66,6 +68,7 @@ enum AttributeKey {
 	Uv1,
 	Uv2,
 	Tangents,
+	Bitangents,
 	Joints0,
 	Weights0,
 }
@@ -80,6 +83,7 @@ impl From<&str> for AttributeKey {
 			"_u1" => AttributeKey::Uv1,
 			"_u2" => AttributeKey::Uv2,
 			"_t0" => AttributeKey::Tangents,
+			"_b0" => AttributeKey::Bitangents,
 			"_i0" => AttributeKey::Joints0,
 			"_w0" => AttributeKey::Weights0,
 			attrib_name => panic!("unknown attribute type {attrib_name}"),
@@ -106,6 +110,10 @@ impl Object {
 					vertex_colours,
 				}
 			}
+			"alRenderCloudLayer" => ShaderOptions {
+				textured: false,
+				vertex_colours: false,
+			},
 			_ => panic!("unsupported material"), // maybe fall back to displaying in all purple
 		}
 	}
@@ -255,7 +263,7 @@ impl Object {
 			.find(|(name, _)| name.starts_with(object_name) && name.ends_with(".bfres"))
 			.map(|(_, data)| data)?;
 
-		println!("loading model {object_name}");
+		// println!("loading model {object_name}");
 		let model = ModelArchive::read(&mut BinaryReader::new(bfres)).ok()?;
 		let external_texture_archive = if let Some(data) = sarc.get_file("InitModel.byml") {
 			let byml = Byml::read(&mut BinaryReader::new(data)).unwrap();
@@ -276,12 +284,12 @@ impl Object {
 		let data = fs::read(texture_path).ok()?;
 		let data = yaz0::decompress(&data).unwrap();
 		let sarc = sarc::Reader::new(data.0).unwrap();
-		println!("{:?}", sarc.filenames().collect::<Vec<_>>());
+		// println!("{:?}", sarc.filenames().collect::<Vec<_>>());
 		let bfres = sarc
 			.files()
 			.find(|(name, _)| name.starts_with(name) && name.ends_with(".bfres"))
 			.map(|(_, data)| data)?;
-		println!("awesome");
+		// println!("awesome");
 		let model = ModelArchive::read(&mut BinaryReader::new(bfres)).unwrap();
 		Some(
 			TextureArchive::read(&mut BinaryReader::new(
@@ -461,6 +469,14 @@ impl Object {
 									4, // stride of 4 because wgpu wants things "aligned to 4 bytes" or something
 									VertexFormat::Unorm8x2,
 								),
+								VertexAttribFormat::Vec2Snorm8 => (
+									vertex_starts
+										.map(|start| [buffer.data[start], buffer.data[start + 1], 0, 0])
+										.flatten()
+										.collect_vec(),
+									4, // stride of 4 because wgpu wants things "aligned to 4 bytes" or something
+									VertexFormat::Snorm8x2,
+								),
 								VertexAttribFormat::Vec2F32 => (
 									vertex_starts
 										.map(|start| buffer.data[start..start + 8].into_iter().cloned())
@@ -540,6 +556,10 @@ impl Object {
 						(ChannelFormat::BC3, TypeFormat::SRGB) => TextureFormat::Bc3RgbaUnormSrgb,
 						(ChannelFormat::BC4, TypeFormat::Unorm) => TextureFormat::Bc4RUnorm,
 						(ChannelFormat::R8G8B8A8, TypeFormat::SRGB) => TextureFormat::Rgba8UnormSrgb,
+						(ChannelFormat::Astc4x4, TypeFormat::SRGB) => {
+							println!("fuuck astc on {model_name}:{texture_name}");
+							continue;
+						}
 						(chan, ty) => unimplemented!("{chan:?} {ty:?}"),
 					};
 					let convert_wrap_mode = |wrap_mode: WrapMode| match wrap_mode {
@@ -608,11 +628,25 @@ impl Object {
 						2 => TextureDimension::D3,
 						dim => panic!("texture {texture_name} has a bad image dimension {dim}"),
 					};
+					let format = texture.gfx.channel_format.format_info();
+					let mip_level_count = texture
+						.mip_offsets
+						.iter()
+						.cloned()
+						.enumerate()
+						.take_while(|(mip_level, _)| {
+							let extents = mip_level_size(extents, *mip_level as _, dimension);
+
+						// wgpu no likey :( need to move this sooner so i can report the correct number of mips
+							!(extents.width % format.block_width() as u32 != 0
+								|| extents.height % format.block_height() as u32 != 0)
+						})
+						.count();
 					let texture_wgpu =
 						texture_wgpu.insert(context.device.create_texture(&TextureDescriptor {
 							label: None,
 							size: extents,
-							mip_level_count: texture.mip_offsets.len() as _,
+							mip_level_count: mip_level_count as _,
 							sample_count: texture.gfx.sample_count as _,
 							dimension,
 							format: texture_format,
@@ -634,19 +668,18 @@ impl Object {
 							},
 						}
 					}
-					let format =
-						FormatInfo::from_image_format(texture.gfx.channel_format, texture.gfx.type_format);
-					println!("texture: {texture_name} {:?}", texture.gfx.image_format());
-					for (mip_level, mip_offset) in texture.mip_offsets.iter().cloned().enumerate() {
+					// println!("texture: {texture_name} {:?}", texture.gfx.image_format());
+					for (mip_level, mip_offset) in texture
+						.mip_offsets
+						.iter()
+						.cloned()
+						.enumerate()
+						.take(mip_level_count)
+					{
 						let extents = mip_level_size(extents, mip_level as _, dimension);
-						let bpr = ((extents.width * format.bytes_per_pixel) / format.block_dim.height.get());
+						let bpr =
+							(extents.width * format.bytes_per_pixel() as u32) / format.block_height() as u32;
 
-						// wgpu no likey :( need to move this sooner so i can report the correct number of mips
-						if extents.width % format.block_dim.width.get() != 0
-							|| extents.height % format.block_dim.height.get() != 0
-						{
-							break;
-						}
 						// println!(
 						// 	"{:?} {} {} {} {mip_offset}",
 						// 	extents,
@@ -694,7 +727,7 @@ impl Object {
 			}
 		}
 
-		Object { shapes, transform }
+		Object { shapes, transform, bounding_min, bounding_max }
 	}
 
 	pub fn draw(&self, pass: &mut RenderPass) {
