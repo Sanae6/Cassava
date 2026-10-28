@@ -312,6 +312,8 @@ impl Object {
 			usage: BufferUsages::UNIFORM,
 		});
 		let mut shapes = Vec::new();
+		let bounding_min = Vec3::ZERO;
+		let bounding_max = Vec3::ZERO;
 		for (model_name, model) in &model.models {
 			for (shape_name, shape) in &model.shapes {
 				if shape_name.contains("Caustic") {

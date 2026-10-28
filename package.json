@@ -1,0 +1,9 @@
+{
+  "workspaces": [
+    "editor-web/svelte"
+  ],
+  "scripts": {
+    "dev": "cd editor-web/svelte && pnpm dev",
+    "build": "cd editor-web/svelte && pnpm build"
+  }
+}

@@ -1,4 +1,5 @@
 {
   "wgsl-analyzer.showSyntaxTree": true,
   "wgsl-analyzer.server.path": "wgsl-analyzer",
+  "rust-analyzer.checkOnSave": true,
 }

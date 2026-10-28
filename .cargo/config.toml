@@ -5,3 +5,7 @@ rustflags = [
   "-Zshare-generics=y",
 ]
 linker = "clang"
+
+[env]
+TS_RS_EXPORT_DIR = { value = "editor-web/svelte/bindings", relative = true }
+TS_RS_LARGE_INT = "object"

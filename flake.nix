@@ -32,8 +32,10 @@
               fenix.complete.rust-src
             ])
 
-            webkitgtk_4_1
-            gtk3
+            pnpm
+            nodejs
+            webkitgtk_6_0
+            gtk4
             cairo
             libsoup_3
             gdk-pixbuf

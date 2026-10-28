@@ -1,6 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["cassava", "cli", "editor", "editor-wry", "project"]
+members = [
+"cassava",
+"cli",
+"editor",
+"editor-web",
+"editor-web/macros",
+"project",
+]
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
