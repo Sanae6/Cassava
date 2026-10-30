@@ -1,19 +1,17 @@
 <script lang="ts">
-  import Counter from "./lib/Counter.svelte";
-  import { fetchSingleton } from "./lib/utils/rust";
-  import { TestService } from "$bindings/TestService";
+  import { FluentBundle } from "@fluent/bundle";
+  import {
+    createSvelteFluent,
+    initFluentContext,
+    Localized,
+  } from "@nubolab-ffwd/svelte-fluent";
+  import resourceEn from "./lang/app.ftl";
 
-  let count = $state(0);
-  const test = await fetchSingleton(TestService, "test");
-  let return_value = $derived(await test.double({ value: count }));
+  import Setup from "./Setup.svelte";
+
+  const bundle = new FluentBundle("en");
+  bundle.addResource(resourceEn);
+  initFluentContext(() => createSvelteFluent([bundle]));
 </script>
 
-<section id="center">
-  <div>
-    <h1 class="text-3xl font-bold">Get burgy {return_value}</h1>
-  </div>
-  <Counter bind:count />
-</section>
-
-<style>
-</style>
+<Setup></Setup>

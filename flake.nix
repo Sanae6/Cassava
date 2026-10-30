@@ -36,7 +36,9 @@
             nodejs
             webkitgtk_6_0
             gtk4
+            gsettings-desktop-schemas
             cairo
+            dconf
             libsoup_3
             gdk-pixbuf
             glib
@@ -63,6 +65,9 @@
             libxi
             libx11
           ];
+          shellHook = ''
+            export XDG_DATA_DIRS=$XDG_DATA_DIRS:$GSETTINGS_SCHEMAS_PATH
+          '';
           LD_LIBRARY_PATH = lib.makeLibraryPath (
             buildInputs
             ++ [

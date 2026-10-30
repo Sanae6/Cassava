@@ -113,7 +113,7 @@ impl<'a> Serializer for ValueSerializer<'a> {
 	}
 
 	fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-		Ok(Value::new_null(&self.context))
+		Ok(Value::new_undefined(&self.context))
 	}
 
 	fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>

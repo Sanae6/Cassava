@@ -41,7 +41,7 @@ pub enum Error {
 // 	___u: u32,
 // }
 
-fn new_object(context: &Context) -> Value {
+pub fn new_object(context: &Context) -> Value {
 	unsafe {
 		from_glib_full(javascriptcore::ffi::jsc_value_new_object(
 			context.to_glib_none().0,

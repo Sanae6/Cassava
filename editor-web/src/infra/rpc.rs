@@ -1,9 +1,12 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Once};
+use std::{
+	any::Any, cell::RefCell, collections::HashMap, fmt, hint::unreachable_unchecked, rc::Rc,
+	sync::Once,
+};
 
 use linkme::distributed_slice;
-use serde::Deserialize;
+use snafu::Snafu;
 use ts_rs::{Config, Dependency, ExportError, TS};
-use webkit6::javascriptcore::Value;
+use webkit6::{ScriptMessageReply, WebView, glib, javascriptcore::Value, prelude::WebViewExt};
 
 slotmap::new_key_type! {
 	#[derive(TS)]
@@ -67,7 +70,48 @@ pub fn filter_export_failures(error: ExportError) -> Result<(), ExportError> {
 	}
 }
 
-pub trait ObjectHandler {
+#[derive(Snafu, Debug)]
+#[snafu(display("unknown message on {handler_name}: {type_string}"))]
+pub struct HandlerError {
+	pub type_string: String,
+	pub handler_name: &'static str,
+}
+pub struct Context<T: ObjectHandler + ?Sized> {
+	pub rc: Rc<RefCell<T>>,
+	pub webview: WebView,
+	pub progress_reporter: Option<String>,
+}
+impl Context<dyn ObjectHandler> {
+	#[doc(hidden)]
+	/// downcasts the dyn context into a context of a given type.
+	///
+	/// safety: the caller must call this function with the currently stored type.
+	pub unsafe fn downcast_unchecked<T: ObjectHandler>(self) -> Context<T> {
+		let rc = Rc::into_raw(self.rc);
+
+		Context {
+			// safety: the type is guaranteed to be correct by the caller, therefore
+			// alignment and size are the same for the type.
+			rc: unsafe { Rc::from_raw(rc.cast()) },
+			webview: self.webview,
+			progress_reporter: self.progress_reporter,
+		}
+	}
+}
+impl<T: ObjectHandler> Context<T> {
+	pub fn report_progress(&self, args: fmt::Arguments) {
+		let Some(progress_reporter) = &self.progress_reporter else {
+			eprintln!("warning: attempting to report progress without progress reporter id");
+			return;
+		};
+		let args = format!("__crescentEventManager.invokeProgressReporter(\"{progress_reporter}\", {args})");
+		let webview = self.webview.clone();
+		glib::MainContext::default().spawn_local(async move {
+			let _ = webview.evaluate_javascript_future(&args, None, None).await;
+		});
+	}
+}
+pub trait ObjectHandler: Any {
 	fn ts_dependencies(config: &Config) -> Vec<Dependency>
 	where
 		Self: Sized;
@@ -77,7 +121,13 @@ pub trait ObjectHandler {
 	fn ts_types(config: &Config) -> String
 	where
 		Self: Sized;
-	fn handle(&mut self, data: &Value) -> Value;
+
+	fn handle(
+		&mut self,
+		context: Context<dyn ObjectHandler>,
+		reply: ScriptMessageReply,
+		data: &Value,
+	) -> Result<Option<Value>, HandlerError>;
 }
 
 #[distributed_slice]
@@ -94,20 +144,46 @@ fn write_types() {
 	});
 }
 
-#[derive(TS, Deserialize)]
-#[ts(export)]
-struct Burgy {
-	value: u32,
-}
+// pub use rpc_promise::new_promise;
+// mod rpc_promise {
+// 	use webkit6::{
+// 		glib::{
+// 			self,
+// 			translate::{ToGlibPtr, from_glib_borrow, from_glib_full},
+// 		},
+// 		javascriptcore::ffi,
+// 		javascriptcore::{Context, Value},
+// 	};
 
-pub struct TestService;
-
-#[editor_web_macro::handlers]
-impl TestService {
-	fn double(&self, value: Burgy) -> u32 {
-		value.value * 2
-	}
-}
+// 	pub fn new_promise<P: FnOnce(&Value, &Value)>(context: &Context, executor: P) -> Value {
+// 		let mut executor_data: Option<P> = Some(executor);
+// 		unsafe extern "C" fn executor_func<P: FnOnce(&Value, &Value)>(
+// 			resolve: *mut ffi::JSCValue,
+// 			reject: *mut ffi::JSCValue,
+// 			user_data: glib::ffi::gpointer,
+// 		) {
+// 			unsafe {
+// 				let resolve = from_glib_borrow(resolve);
+// 				let reject = from_glib_borrow(reject);
+// 				let callback = user_data as *mut Option<P>;
+// 				if let Some(callback) = callback.as_mut_unchecked().take() {
+// 					(callback)(&resolve, &reject)
+// 				} else {
+// 					eprintln!("callback called despite already being taken");
+// 				}
+// 			}
+// 		}
+// 		let executor = Some(executor_func::<P> as _);
+// 		let super_callback0: &mut Option<P> = &mut executor_data;
+// 		unsafe {
+// 			from_glib_full(ffi::jsc_value_new_promise(
+// 				context.to_glib_none().0,
+// 				executor,
+// 				super_callback0 as *mut _ as *mut _,
+// 			))
+// 		}
+// 	}
+// }
 
 pub use ts_rs_vendored::generate_imports;
 mod ts_rs_vendored {
