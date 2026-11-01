@@ -17,7 +17,6 @@ use crate::{
 		rpc::{Context, Rpc},
 		serde,
 	},
-	state::Settings,
 };
 
 fn main() {
@@ -34,9 +33,7 @@ fn main() {
 		});
 		let ucm = webview.user_content_manager().unwrap();
 		Rpc::setup();
-		Rpc::instance()
-			.borrow_mut()
-			.register_singleton("settings", Settings::new(window.clone()));
+		state::register_singletons(window.clone());
 		ucm.add_script(&UserScript::new(
 			"window.rusty = true;",
 			UserContentInjectedFrames::AllFrames,

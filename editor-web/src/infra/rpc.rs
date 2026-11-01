@@ -1,5 +1,5 @@
 use std::{
-	any::Any, cell::RefCell, collections::HashMap, fmt, hint::unreachable_unchecked, rc::Rc,
+	any::Any, cell::RefCell, collections::HashMap, fmt, rc::Rc,
 	sync::Once,
 };
 

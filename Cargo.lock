@@ -1590,10 +1590,10 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 name = "editor-web"
 version = "0.1.0"
 dependencies = [
+ "cassava",
+ "cassava-project",
  "directories",
  "editor-web-macro",
- "futures-intrusive",
- "futures-lite 2.6.1",
  "heapless",
  "javascriptcore6",
  "linkme",
@@ -2074,17 +2074,6 @@ dependencies = [
  "futures-core",
  "futures-task",
  "futures-util",
-]
-
-[[package]]
-name = "futures-intrusive"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d930c203dd0b6ff06e0201a4a2fe9149b43c684fd4420555b26d21b1a02956f"
-dependencies = [
- "futures-core",
- "lock_api",
- "parking_lot",
 ]
 
 [[package]]

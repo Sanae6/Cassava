@@ -1,7 +1,6 @@
 use std::{
-	collections::{HashMap, HashSet},
-	fs, io,
-	ops::Range,
+	collections::HashMap,
+	io,
 	path::{Path, PathBuf},
 	sync::LazyLock,
 };
@@ -19,7 +18,7 @@ use webkit6::{
 	glib::{self, Priority},
 };
 
-use crate::state::config::Version;
+use super::config::Version;
 
 type VersionVec = heapless::Vec<Version, { Version::VERSION_COUNT }>;
 
@@ -90,6 +89,7 @@ pub enum HashingReport {
 	MixedRomfs,
 	FailedToHash(PathBuf, String),
 	Version(Version),
+	IncompleteDump(Version),
 	#[ts(as = "Vec<Version>")]
 	VersionInconclusive(VersionVec),
 }
@@ -117,10 +117,13 @@ pub async fn hash_romfs(
 						.to_owned();
 					(path, rel_path)
 				})
-				.filter(|(_, rel_path)| !HASHES.known_path(rel_path))
+				.filter(|(_, rel_path)| HASHES.known_path(rel_path))
 		})
 		.collect::<Vec<_>>();
 	let total = dir.len();
+	if total == 0 {
+		return HashingReport::NotRomfs;
+	}
 	progress_report(0, total);
 	let mut possible_versions = (1u8 << std::mem::variant_count::<Version>()) - 1;
 	for (full_path, rel_path) in dir {
@@ -168,7 +171,9 @@ pub async fn hash_romfs(
 		.file_counts
 		.get(&version)
 		.expect("missing file count for version");
-	if matched_files != *file_count {}
+	if matched_files != *file_count {
+		return HashingReport::IncompleteDump(version);
+	}
 
 	HashingReport::Version(versions[0])
 }

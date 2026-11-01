@@ -502,16 +502,18 @@ impl<'a> Serializer for MapKeySerializer<'a> {
 	}
 
 	fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
-		Err(Error::KeyNotAString)
+		*self.value = _name.to_owned();
+		Ok(())
 	}
 
 	fn serialize_unit_variant(
 		self,
 		_name: &'static str,
 		_variant_index: u32,
-		_variant: &'static str,
+		variant: &'static str,
 	) -> Result<Self::Ok, Self::Error> {
-		Err(Error::KeyNotAString)
+		*self.value = variant.to_owned();
+		Ok(())
 	}
 
 	fn serialize_newtype_struct<T>(

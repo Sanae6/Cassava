@@ -14,10 +14,10 @@ toml.workspace = true
 ts-rs = "12.0.1"
 webkit6 = { version = "^0.6.1", features = ["v2_52", "gtk_v4_18"] }
 javascriptcore6 = { version = "*", features = ["v2_48"] }
-futures-intrusive = "0.5.0"
 walkdir = "2"
 heapless = { version = "0.9.3", features = ["serde"] }
-futures-lite = "2.6.1"
 sha2 = "0.11.1"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
+cassava-project = { version = "0.1.0", path = "../project" }
+cassava = { version = "0.1.0", path = "../cassava" }

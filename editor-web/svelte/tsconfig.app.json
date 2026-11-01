@@ -19,6 +19,7 @@
 
     "paths": {
       "$bindings/*": ["./bindings/*"],
+      "$lib/*": ["./src/lib/*"],
     },
   },
   "include": ["./globals.d.ts", "./bindings/**/*.ts", "./src/**/*.ts", "./src/**/*.js", "./src/**/*.svelte"]

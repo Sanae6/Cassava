@@ -16,6 +16,7 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: '$bindings', replacement: path.resolve(__dirname, 'bindings') },
+      { find: '$lib', replacement: path.resolve(__dirname, 'src/lib') },
     ],
   },
 })
